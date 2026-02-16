@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct BeaconMenuBarApp: App {
     @StateObject private var store: SessionStore
+    @AppStorage("beacon.themePreference") private var themePreferenceRaw = ThemePreference.system.rawValue
     private let jumpService: TerminalJumpService
     private let server: LocalEventServer?
 
@@ -28,10 +29,27 @@ struct BeaconMenuBarApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            BeaconPanelView(store: store, jumpService: jumpService)
+            BeaconPanelView(
+                store: store,
+                jumpService: jumpService,
+                themePreference: themePreference,
+                onToggleTheme: toggleTheme
+            )
+            .beaconThemeOverride(themePreference.overrideColorScheme)
         } label: {
             PillStatusView(status: store.globalStatus)
+                .beaconThemeOverride(themePreference.overrideColorScheme)
         }
         .menuBarExtraStyle(.window)
+    }
+
+    private var themePreference: ThemePreference {
+        ThemePreference(rawValue: themePreferenceRaw) ?? .system
+    }
+
+    private func toggleTheme() {
+        var preference = themePreference
+        preference.toggleDarkLight()
+        themePreferenceRaw = preference.rawValue
     }
 }

@@ -1,13 +1,17 @@
 import SwiftUI
+import Foundation
 
 struct BeaconPanelView: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var store: SessionStore
     let jumpService: TerminalJumpService
+    let themePreference: ThemePreference
+    let onToggleTheme: () -> Void
 
     var body: some View {
         VStack(spacing: 16) {
             header
+            controls
             Divider().overlay(ThemeTokens.border(for: colorScheme))
 
             if store.sessions.isEmpty {
@@ -16,9 +20,17 @@ struct BeaconPanelView: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         ForEach(store.sessions) { session in
-                            SessionCardView(session: session) {
-                                _ = jumpService.jump(to: session)
-                            }
+                            SessionCardView(
+                                session: session,
+                                onJumpAuto: { jumpService.jump(to: session) },
+                                onJumpManual: { target in
+                                    jumpService.jump(
+                                        cwd: session.cwd ?? NSHomeDirectory(),
+                                        projectName: session.projectName,
+                                        forcedTarget: target
+                                    )
+                                }
+                            )
                         }
                     }
                 }
@@ -43,6 +55,28 @@ struct BeaconPanelView: View {
             Text("[ ACTIVE_SESSIONS: \(store.sessions.count) ]")
                 .font(ThemeTokens.mono(size: 10))
                 .foregroundStyle(ThemeTokens.textDim(for: colorScheme))
+        }
+    }
+
+    private var controls: some View {
+        HStack(spacing: 8) {
+            Spacer()
+
+            Button(action: onToggleTheme) {
+                Image(systemName: themePreference == .light ? "moon.stars.fill" : "sun.max.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(ThemeTokens.textDim(for: colorScheme))
+                    .frame(width: 28, height: 28)
+                    .background(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.3))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(ThemeTokens.border(for: colorScheme), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(.plain)
+            .help("Toggle Dark/Light Theme")
+            .accessibilityLabel("Toggle Dark or Light Theme")
         }
     }
 

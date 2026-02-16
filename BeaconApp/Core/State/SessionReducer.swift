@@ -36,13 +36,29 @@ public struct SessionReducer {
             statusReason: nil,
             usageBytes: 0,
             usageSegments: 0,
-            updatedAt: now
+            updatedAt: now,
+            sourceApp: event.sourceApp,
+            sourceBundleID: event.sourceBundleID,
+            sourcePID: event.sourcePID,
+            sourceConfidence: event.sourceConfidence ?? .unknown
         )
 
         model.updatedAt = now
         model.projectName = event.projectName ?? model.projectName
         if let cwd = event.cwd, !cwd.isEmpty {
             model.cwd = cwd
+        }
+        if let sourceApp = event.sourceApp, !sourceApp.isEmpty {
+            model.sourceApp = sourceApp
+        }
+        if let sourceBundleID = event.sourceBundleID, !sourceBundleID.isEmpty {
+            model.sourceBundleID = sourceBundleID
+        }
+        if let sourcePID = event.sourcePID {
+            model.sourcePID = sourcePID
+        }
+        if let sourceConfidence = event.sourceConfidence {
+            model.sourceConfidence = sourceConfidence
         }
 
         switch event.event {

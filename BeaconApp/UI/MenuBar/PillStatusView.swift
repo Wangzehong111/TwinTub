@@ -1,57 +1,40 @@
 import SwiftUI
 
 struct PillStatusView: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     let status: SessionStore.GlobalStatus
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(dotColor)
-                .frame(width: 8, height: 8)
-
-            Text(label)
-                .font(ThemeTokens.mono(size: 10, weight: .semibold))
-                .foregroundStyle(ThemeTokens.text(for: colorScheme))
-
-            if case let .waiting(count) = status {
-                Text("x\(count)")
-                    .font(ThemeTokens.mono(size: 10, weight: .bold))
-                    .foregroundStyle(ThemeTokens.pink(for: colorScheme))
-            }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(colorScheme == .dark ? 0.12 : 0.35))
-        )
-        .overlay(
-            Capsule().stroke(ThemeTokens.border(for: colorScheme), lineWidth: 1)
-        )
-        .frame(height: 22)
+        Image(systemName: symbolName)
+            .font(.system(size: 14, weight: .semibold))
+            .symbolRenderingMode(.monochrome)
+            .frame(width: 20, height: 16)
+            .contentShape(Rectangle())
+            .accessibilityLabel(accessibilityStatus)
     }
 
-    private var label: String {
-        switch status {
-        case .idle: return "IDLE"
-        case .processing: return "PROCESSING"
-        case .waiting: return "WAITING"
-        case .done: return "DONE"
-        }
-    }
-
-    private var dotColor: Color {
+    private var accessibilityStatus: String {
         switch status {
         case .idle:
-            return ThemeTokens.textDim(for: colorScheme)
+            return "Beacon Idle"
         case .processing:
-            return ThemeTokens.amber(for: colorScheme)
+            return "Beacon Processing"
         case .waiting:
-            return ThemeTokens.pink(for: colorScheme)
+            return "Beacon Waiting for Input"
         case .done:
-            return ThemeTokens.green(for: colorScheme)
+            return "Beacon Done"
+        }
+    }
+
+    private var symbolName: String {
+        switch status {
+        case .idle:
+            return "circle"
+        case .processing:
+            return "hourglass.circle"
+        case .waiting:
+            return "exclamationmark.triangle"
+        case .done:
+            return "checkmark.circle"
         }
     }
 }

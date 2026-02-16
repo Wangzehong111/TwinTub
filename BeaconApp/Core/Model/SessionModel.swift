@@ -1,5 +1,18 @@
 import Foundation
 
+public enum SourceConfidence: String, Codable, CaseIterable, Sendable {
+    case high
+    case medium
+    case low
+    case unknown
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = (try? container.decode(String.self))?.lowercased() ?? ""
+        self = SourceConfidence(rawValue: raw) ?? .unknown
+    }
+}
+
 public enum SessionStatus: String, Codable, CaseIterable, Sendable {
     case waiting
     case processing
@@ -29,6 +42,10 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
     public var waitingSince: Date?
     public var lastWaitingNotificationAt: Date?
     public var notificationRepeatCount: Int
+    public var sourceApp: String?
+    public var sourceBundleID: String?
+    public var sourcePID: Int?
+    public var sourceConfidence: SourceConfidence
 
     public init(
         id: String,
@@ -42,7 +59,11 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         completedAt: Date? = nil,
         waitingSince: Date? = nil,
         lastWaitingNotificationAt: Date? = nil,
-        notificationRepeatCount: Int = 0
+        notificationRepeatCount: Int = 0,
+        sourceApp: String? = nil,
+        sourceBundleID: String? = nil,
+        sourcePID: Int? = nil,
+        sourceConfidence: SourceConfidence = .unknown
     ) {
         self.id = id
         self.projectName = projectName
@@ -56,6 +77,10 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         self.waitingSince = waitingSince
         self.lastWaitingNotificationAt = lastWaitingNotificationAt
         self.notificationRepeatCount = notificationRepeatCount
+        self.sourceApp = sourceApp
+        self.sourceBundleID = sourceBundleID
+        self.sourcePID = sourcePID
+        self.sourceConfidence = sourceConfidence
     }
 
     public var displayStatusLine: String {

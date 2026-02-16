@@ -4,9 +4,13 @@ struct SessionCardView: View {
     @Environment(\.colorScheme) private var colorScheme
 
     let session: SessionModel
-    let onJump: () -> Void
+    let onJumpAuto: () -> TerminalJumpService.JumpOutcome
+    let onJumpManual: (TerminalJumpService.JumpTarget) -> Bool
 
     @State private var pulse = false
+    @State private var showJumpPicker = false
+    @State private var manualTargets: [TerminalJumpService.JumpTarget] = []
+    @State private var jumpReason = "Choose a jump target."
 
     var body: some View {
         HStack(spacing: 14) {
@@ -36,7 +40,7 @@ struct SessionCardView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Button(action: onJump) {
+            Button(action: handleJump) {
                 Image(systemName: "arrow.up.right.square")
                     .foregroundStyle(ThemeTokens.textDim(for: colorScheme))
                     .frame(width: 40, height: 40)
@@ -64,6 +68,27 @@ struct SessionCardView: View {
         )
         .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
         .onAppear { pulse = true }
+        .confirmationDialog("SELECT JUMP TARGET", isPresented: $showJumpPicker, titleVisibility: .visible) {
+            ForEach(manualTargets) { target in
+                Button(target.displayName) {
+                    _ = onJumpManual(target)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(jumpReason)
+        }
+    }
+
+    private func handleJump() {
+        switch onJumpAuto() {
+        case .success:
+            return
+        case let .needsManualSelection(targets, reason):
+            manualTargets = targets
+            jumpReason = reason
+            showJumpPicker = true
+        }
     }
 
     private var statusColor: Color {

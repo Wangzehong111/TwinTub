@@ -20,6 +20,10 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
     public let notificationType: String?
     public let usageBytes: Int?
     public let projectName: String?
+    public let sourceApp: String?
+    public let sourceBundleID: String?
+    public let sourcePID: Int?
+    public let sourceConfidence: SourceConfidence?
 
     enum CodingKeys: String, CodingKey {
         case event
@@ -32,6 +36,10 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
         case notificationType = "notification_type"
         case usageBytes = "usage_bytes"
         case projectName = "project_name"
+        case sourceApp = "source_app"
+        case sourceBundleID = "source_bundle_id"
+        case sourcePID = "source_pid"
+        case sourceConfidence = "source_confidence"
     }
 
     public init(
@@ -44,7 +52,11 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
         message: String? = nil,
         notificationType: String? = nil,
         usageBytes: Int? = nil,
-        projectName: String? = nil
+        projectName: String? = nil,
+        sourceApp: String? = nil,
+        sourceBundleID: String? = nil,
+        sourcePID: Int? = nil,
+        sourceConfidence: SourceConfidence? = nil
     ) {
         self.event = event
         self.sessionID = sessionID
@@ -56,6 +68,10 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
         self.notificationType = notificationType
         self.usageBytes = usageBytes
         self.projectName = projectName
+        self.sourceApp = sourceApp
+        self.sourceBundleID = sourceBundleID
+        self.sourcePID = sourcePID
+        self.sourceConfidence = sourceConfidence
     }
 }
 

@@ -1,5 +1,30 @@
 import SwiftUI
 
+enum ThemePreference: String, CaseIterable {
+    case system
+    case dark
+    case light
+
+    var overrideColorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .dark: return .dark
+        case .light: return .light
+        }
+    }
+
+    mutating func toggleDarkLight() {
+        switch self {
+        case .system:
+            self = .dark
+        case .dark:
+            self = .light
+        case .light:
+            self = .dark
+        }
+    }
+}
+
 enum ThemeTokens {
     static func background(for scheme: ColorScheme) -> Color {
         scheme == .dark ? Color(hex: "#050607") : Color(hex: "#F7F3E0")
