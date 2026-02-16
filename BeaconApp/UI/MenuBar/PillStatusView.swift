@@ -4,6 +4,12 @@ import AppKit
 struct PillStatusView: View {
     @Environment(\.colorScheme) private var colorScheme
     let status: SessionStore.GlobalStatus
+    @State private var spinStep: Int = 0
+
+    private var isProcessing: Bool {
+        if case .processing = status { return true }
+        return false
+    }
 
     var body: some View {
         Image(nsImage: statusImage)
@@ -13,6 +19,27 @@ struct PillStatusView: View {
             .frame(width: 18, height: 18)
             .contentShape(Rectangle())
             .accessibilityLabel(accessibilityStatus)
+            .task(id: isProcessing) {
+                guard isProcessing else {
+                    spinStep = 0
+                    return
+                }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    guard !Task.isCancelled else { break }
+                    spinStep = (spinStep + 1) % 30
+                }
+            }
+    }
+
+    private var statusImage: NSImage {
+        if isProcessing {
+            let angle = Double(spinStep) * 12.0
+            return MenuBarIconRenderer.render(
+                status: status, colorScheme: colorScheme, rotationAngle: angle
+            )
+        }
+        return MenuBarIconRenderer.render(status: status, colorScheme: colorScheme)
     }
 
     private var accessibilityStatus: String {
@@ -27,10 +54,6 @@ struct PillStatusView: View {
             return "Beacon Done"
         }
     }
-
-    private var statusImage: NSImage {
-        MenuBarIconRenderer.render(status: status, colorScheme: colorScheme)
-    }
 }
 
 private enum MenuBarIconRenderer {
@@ -38,7 +61,11 @@ private enum MenuBarIconRenderer {
     private static let designSize: CGFloat = 24
     private static let scale: CGFloat = iconSize / designSize
 
-    static func render(status: SessionStore.GlobalStatus, colorScheme: ColorScheme) -> NSImage {
+    static func render(
+        status: SessionStore.GlobalStatus,
+        colorScheme: ColorScheme,
+        rotationAngle: Double = 0
+    ) -> NSImage {
         NSImage(size: NSSize(width: iconSize, height: iconSize), flipped: true) { _ in
             let color = strokeColor(for: status, colorScheme: colorScheme)
             drawChevron(color: color, lineWidth: 2.5 * scale)
@@ -47,7 +74,7 @@ private enum MenuBarIconRenderer {
             case .idle:
                 drawIdle(color: color)
             case .processing:
-                drawProcessing(color: color)
+                drawProcessing(color: color, rotationAngle: rotationAngle)
             case .waiting:
                 drawWaiting(color: color)
             case .done:
@@ -122,7 +149,7 @@ private enum MenuBarIconRenderer {
         fillCircle(center: p(17, 11), radius: max(1.1, 2 * scale), color: color)
     }
 
-    private static func drawProcessing(color: NSColor) {
+    private static func drawProcessing(color: NSColor, rotationAngle: Double) {
         let base = NSColor(
             calibratedRed: color.redComponent,
             green: color.greenComponent,
@@ -130,8 +157,21 @@ private enum MenuBarIconRenderer {
             alpha: max(0.45, color.alphaComponent * 0.55)
         )
         strokePath([p(12, 19), p(20, 19)], color: base, lineWidth: 2.4 * scale, dashed: true)
+
+        let cx = 16 * scale
+        let cy = 10 * scale
+
+        NSGraphicsContext.current?.saveGraphicsState()
+        let xform = NSAffineTransform()
+        xform.translateX(by: cx, yBy: cy)
+        xform.rotate(byDegrees: CGFloat(rotationAngle))
+        xform.translateX(by: -cx, yBy: -cy)
+        xform.concat()
+
         strokePath([p(16, 6), p(16, 14)], color: color, lineWidth: 2.0 * scale)
         strokePath([p(12, 10), p(20, 10)], color: color, lineWidth: 2.0 * scale)
+
+        NSGraphicsContext.current?.restoreGraphicsState()
     }
 
     private static func drawWaiting(color: NSColor) {

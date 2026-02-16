@@ -4,9 +4,22 @@ import SwiftUI
 struct BeaconStatusIcon: View {
     let status: SessionStore.GlobalStatus
     let color: Color
-    @State private var spinning = false
 
     var body: some View {
+        Group {
+            if status == .processing {
+                TimelineView(.animation) { context in
+                    iconCanvas(spinDate: context.date)
+                }
+            } else {
+                iconCanvas(spinDate: nil)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func iconCanvas(spinDate: Date?) -> some View {
         GeometryReader { geometry in
             let metrics = IconMetrics(size: geometry.size)
             let baseStroke = StrokeStyle(
@@ -21,7 +34,7 @@ struct BeaconStatusIcon: View {
 
                 switch status {
                 case .processing:
-                    processingBody(metrics: metrics, baseStroke: baseStroke)
+                    processingBody(metrics: metrics, baseStroke: baseStroke, spinDate: spinDate)
                 case .waiting:
                     waitingBody(metrics: metrics)
                 case .idle:
@@ -33,11 +46,6 @@ struct BeaconStatusIcon: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .aspectRatio(1, contentMode: .fit)
-        .onAppear { spinning = (status == .processing) }
-        .onChange(of: status) { _, newValue in
-            spinning = (newValue == .processing)
-        }
-        .accessibilityHidden(true)
     }
 
     private struct IconMetrics {
@@ -86,8 +94,14 @@ struct BeaconStatusIcon: View {
             .position(x: metrics.x(17), y: metrics.y(11))
     }
 
+    private func spinAngle(from date: Date?) -> Double {
+        guard let date = date else { return 0 }
+        let seconds = date.timeIntervalSinceReferenceDate
+        return (seconds.truncatingRemainder(dividingBy: 3.0) / 3.0) * 360.0
+    }
+
     @ViewBuilder
-    private func processingBody(metrics: IconMetrics, baseStroke: StrokeStyle) -> some View {
+    private func processingBody(metrics: IconMetrics, baseStroke: StrokeStyle, spinDate: Date?) -> some View {
         Path { path in
             path.move(to: metrics.point(12, 19))
             path.addLine(to: metrics.point(20, 19))
@@ -116,13 +130,12 @@ struct BeaconStatusIcon: View {
             .stroke(color, style: StrokeStyle(lineWidth: metrics.lineWidth(2.0, minimum: 1.1), lineCap: .round))
         }
         .rotationEffect(
-            .degrees(spinning ? 360 : 0),
+            .degrees(spinAngle(from: spinDate)),
             anchor: UnitPoint(
                 x: metrics.size.width > 0 ? metrics.x(16) / metrics.size.width : 0.5,
                 y: metrics.size.height > 0 ? metrics.y(10) / metrics.size.height : 0.5
             )
         )
-        .animation(spinning ? .linear(duration: 3).repeatForever(autoreverses: false) : .none, value: spinning)
     }
 
     @ViewBuilder
