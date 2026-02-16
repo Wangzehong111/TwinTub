@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SOURCE_SCRIPT="$ROOT_DIR/hooks/beacon_hook_bridge.sh"
+TARGET_DIR="$HOME/.claude/hooks"
+TARGET_SCRIPT="$TARGET_DIR/beacon_hook_bridge.sh"
+SETTINGS_FILE="$HOME/.claude/settings.json"
+
+mkdir -p "$TARGET_DIR"
+cp "$SOURCE_SCRIPT" "$TARGET_SCRIPT"
+chmod +x "$TARGET_SCRIPT"
+
+echo "Beacon hook bridge installed: $TARGET_SCRIPT"
+
+echo ""
+echo "If you manage Claude hooks via JSON, add this command for each needed hook event:"
+echo "  $TARGET_SCRIPT"
+echo ""
+echo "Validation command:"
+echo "  echo '{"event":"UserPromptSubmit","session_id":"demo","cwd":"$PWD"}' | $TARGET_SCRIPT"
+
+if [ -f "$SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
+  TMP_FILE="$(mktemp)"
+  jq '. as $root | if ($root.hooks // null) == null then . + {hooks: {}} else . end' "$SETTINGS_FILE" > "$TMP_FILE"
+  mv "$TMP_FILE" "$SETTINGS_FILE"
+  echo "Normalized hooks root in $SETTINGS_FILE"
+fi
