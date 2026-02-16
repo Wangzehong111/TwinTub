@@ -40,8 +40,22 @@ normalize_source_confidence() {
   esac
 }
 
+normalize_tty() {
+  local raw="${1:-}"
+  [ -z "$raw" ] && return 1
+  case "$raw" in
+    "not a tty"|"notatty"|"?"|"") return 1 ;;
+  esac
+  if [ "${raw#"/dev/"}" != "$raw" ]; then
+    printf '%s' "$raw"
+  else
+    printf '/dev/%s' "$raw"
+  fi
+}
+
 detect_source_from_env() {
   local term_program="${TERM_PROGRAM:-}"
+  local term_value="${TERM:-}"
   local parent_pid="${PPID:-}"
   case "$term_program" in
     Apple_Terminal)
@@ -65,14 +79,52 @@ detect_source_from_env() {
       SOURCE_CONFIDENCE="high"
       return 0
       ;;
+    ghostty|Ghostty)
+      SOURCE_APP="Ghostty"
+      SOURCE_BUNDLE_ID="com.mitchellh.ghostty"
+      SOURCE_PID="$parent_pid"
+      SOURCE_CONFIDENCE="high"
+      return 0
+      ;;
+    WezTerm)
+      SOURCE_APP="WezTerm"
+      SOURCE_BUNDLE_ID="com.github.wez.wezterm"
+      SOURCE_PID="$parent_pid"
+      SOURCE_CONFIDENCE="high"
+      return 0
+      ;;
+    kaku|Kaku)
+      SOURCE_APP="Kaku"
+      SOURCE_BUNDLE_ID="fun.tw93.kaku"
+      SOURCE_PID="$parent_pid"
+      SOURCE_CONFIDENCE="high"
+      return 0
+      ;;
     vscode)
       if [ -n "${CURSOR_TRACE_ID:-}" ] || [ -n "${CURSOR_LAUNCHED_BY_CURSOR:-}" ]; then
         SOURCE_APP="Cursor"
         SOURCE_BUNDLE_ID="com.todesktop.230313mzl4w4u92"
       else
         SOURCE_APP="Visual Studio Code"
-        SOURCE_BUNDLE_ID="com.microsoft.vscode"
+        SOURCE_BUNDLE_ID="com.microsoft.VSCode"
       fi
+      SOURCE_PID="$parent_pid"
+      SOURCE_CONFIDENCE="medium"
+      return 0
+      ;;
+  esac
+
+  case "$term_value" in
+    *ghostty*)
+      SOURCE_APP="Ghostty"
+      SOURCE_BUNDLE_ID="com.mitchellh.ghostty"
+      SOURCE_PID="$parent_pid"
+      SOURCE_CONFIDENCE="medium"
+      return 0
+      ;;
+    *kaku*)
+      SOURCE_APP="Kaku"
+      SOURCE_BUNDLE_ID="fun.tw93.kaku"
       SOURCE_PID="$parent_pid"
       SOURCE_CONFIDENCE="medium"
       return 0
@@ -94,7 +146,7 @@ source_from_process_name() {
       ;;
     *"visual studio code"*|*"/code"*|*" code")
       SOURCE_APP="Visual Studio Code"
-      SOURCE_BUNDLE_ID="com.microsoft.vscode"
+      SOURCE_BUNDLE_ID="com.microsoft.VSCode"
       SOURCE_CONFIDENCE="medium"
       return 0
       ;;
@@ -118,7 +170,19 @@ source_from_process_name() {
       ;;
     *kaku*)
       SOURCE_APP="Kaku"
-      SOURCE_BUNDLE_ID="com.kaku.app"
+      SOURCE_BUNDLE_ID="fun.tw93.kaku"
+      SOURCE_CONFIDENCE="medium"
+      return 0
+      ;;
+    *ghostty*)
+      SOURCE_APP="Ghostty"
+      SOURCE_BUNDLE_ID="com.mitchellh.ghostty"
+      SOURCE_CONFIDENCE="medium"
+      return 0
+      ;;
+    *wezterm*)
+      SOURCE_APP="WezTerm"
+      SOURCE_BUNDLE_ID="com.github.wez.wezterm"
       SOURCE_CONFIDENCE="medium"
       return 0
       ;;
@@ -178,6 +242,105 @@ detect_source() {
   return 1
 }
 
+detect_terminal_context() {
+  SHELL_PID="${SHELL_PID:-}"
+  SHELL_PPID="${SHELL_PPID:-}"
+  TERMINAL_TTY="${TERMINAL_TTY:-}"
+  TERMINAL_SESSION_ID="${TERMINAL_SESSION_ID:-}"
+
+  [ -z "$SHELL_PID" ] && SHELL_PID="$$"
+  [ -z "$SHELL_PPID" ] && SHELL_PPID="${PPID:-}"
+
+  if [ -z "$TERMINAL_TTY" ]; then
+    local detected_tty
+    detected_tty="$(tty 2>/dev/null || true)"
+    TERMINAL_TTY="$(normalize_tty "$detected_tty" || true)"
+  else
+    TERMINAL_TTY="$(normalize_tty "$TERMINAL_TTY" || true)"
+  fi
+
+  if [ -z "$TERMINAL_TTY" ]; then
+    detect_tty_from_process_tree || true
+  fi
+
+  if [ -z "$TERMINAL_SESSION_ID" ]; then
+    if [ -n "${TERM_SESSION_ID:-}" ]; then
+      TERMINAL_SESSION_ID="$TERM_SESSION_ID"
+    elif [ -n "${ITERM_SESSION_ID:-}" ]; then
+      TERMINAL_SESSION_ID="$ITERM_SESSION_ID"
+    elif [ -n "${WARP_SESSION_ID:-}" ]; then
+      TERMINAL_SESSION_ID="$WARP_SESSION_ID"
+    fi
+  fi
+
+  TERMINAL_WINDOW_ID="${TERMINAL_WINDOW_ID:-}"
+  TERMINAL_PANE_ID="${TERMINAL_PANE_ID:-}"
+
+  if [ -z "$TERMINAL_WINDOW_ID" ]; then
+    if [ -n "${KITTY_WINDOW_ID:-}" ]; then
+      TERMINAL_WINDOW_ID="$KITTY_WINDOW_ID"
+    elif [ -n "${WINDOWID:-}" ]; then
+      TERMINAL_WINDOW_ID="$WINDOWID"
+    fi
+  fi
+
+  if [ -z "$TERMINAL_PANE_ID" ]; then
+    if [ -n "${WEZTERM_PANE:-}" ]; then
+      TERMINAL_PANE_ID="$WEZTERM_PANE"
+    fi
+  fi
+
+  infer_source_from_terminal_context
+}
+
+detect_tty_from_process_tree() {
+  local current_pid="${PPID:-}"
+  local depth=0
+  local max_depth=12
+
+  while [ -n "$current_pid" ] && [ "$current_pid" -gt 1 ] 2>/dev/null && [ "$depth" -lt "$max_depth" ]; do
+    local tty_value normalized_tty ppid_value
+    tty_value="$(ps -p "$current_pid" -o tty= 2>/dev/null | head -n1 | sed 's/^ *//;s/ *$//')"
+    normalized_tty="$(normalize_tty "$tty_value" || true)"
+    if [ -n "$normalized_tty" ]; then
+      TERMINAL_TTY="$normalized_tty"
+      SHELL_PID="$current_pid"
+      ppid_value="$(ps -p "$current_pid" -o ppid= 2>/dev/null | tr -d ' ')"
+      if [ -n "$ppid_value" ]; then
+        SHELL_PPID="$ppid_value"
+      fi
+      return 0
+    fi
+
+    current_pid="$(ps -p "$current_pid" -o ppid= 2>/dev/null | tr -d ' ')"
+    depth=$((depth + 1))
+  done
+
+  return 1
+}
+
+infer_source_from_terminal_context() {
+  [ -n "${SOURCE_APP:-}" ] && return 0
+
+  if [ -n "${TERM_SESSION_ID:-}" ]; then
+    SOURCE_APP="Terminal.app"
+    SOURCE_BUNDLE_ID="com.apple.Terminal"
+  elif [ -n "${ITERM_SESSION_ID:-}" ]; then
+    SOURCE_APP="iTerm2"
+    SOURCE_BUNDLE_ID="com.googlecode.iterm2"
+  elif [ -n "${WARP_SESSION_ID:-}" ]; then
+    SOURCE_APP="Warp"
+    SOURCE_BUNDLE_ID="dev.warp.warp-stable"
+  else
+    return 0
+  fi
+
+  [ -z "${SOURCE_PID:-}" ] && SOURCE_PID="${SHELL_PPID:-${PPID:-}}"
+  if [ "${SOURCE_CONFIDENCE:-unknown}" = "unknown" ]; then
+    SOURCE_CONFIDENCE="medium"
+  fi
+}
+
 if command -v jq >/dev/null 2>&1; then
   EVENT="$(extract_with_jq '.event // .hook_event_name // .hookEventName')"
   SESSION_ID="$(extract_with_jq '.session_id // .sessionId // .session.id')"
@@ -193,6 +356,12 @@ if command -v jq >/dev/null 2>&1; then
   SOURCE_BUNDLE_ID="$(extract_with_jq '.source_bundle_id // .sourceBundleId')"
   SOURCE_PID="$(extract_with_jq '.source_pid // .sourcePid')"
   SOURCE_CONFIDENCE="$(extract_with_jq '.source_confidence // .sourceConfidence')"
+  SHELL_PID="$(extract_with_jq '.shell_pid // .shellPid')"
+  SHELL_PPID="$(extract_with_jq '.shell_ppid // .shellPpid')"
+  TERMINAL_TTY="$(extract_with_jq '.terminal_tty // .terminalTty // .tty')"
+  TERMINAL_SESSION_ID="$(extract_with_jq '.terminal_session_id // .terminalSessionId // .term_session_id')"
+  TERMINAL_WINDOW_ID="$(extract_with_jq '.terminal_window_id // .terminalWindowId')"
+  TERMINAL_PANE_ID="$(extract_with_jq '.terminal_pane_id // .terminalPaneId')"
 else
   EVENT="$(extract_with_sed 'event')"
   SESSION_ID="$(extract_with_sed 'session_id')"
@@ -208,12 +377,27 @@ else
   SOURCE_BUNDLE_ID="$(extract_with_sed 'source_bundle_id')"
   SOURCE_PID="$(extract_int_with_sed 'source_pid')"
   SOURCE_CONFIDENCE="$(extract_with_sed 'source_confidence')"
+  SHELL_PID="$(extract_int_with_sed 'shell_pid')"
+  SHELL_PPID="$(extract_int_with_sed 'shell_ppid')"
+  TERMINAL_TTY="$(extract_with_sed 'terminal_tty')"
+  TERMINAL_SESSION_ID="$(extract_with_sed 'terminal_session_id')"
+  TERMINAL_WINDOW_ID="$(extract_with_sed 'terminal_window_id')"
+  TERMINAL_PANE_ID="$(extract_with_sed 'terminal_pane_id')"
 fi
 
 [ -z "$EVENT" ] && exit 0
 [ -z "$SESSION_ID" ] && exit 0
 
 detect_source || true
+detect_terminal_context
+
+# Debug log (temporary)
+{
+  printf '%s src=%s bundle=%s conf=%s shellPID=%s shellPPID=%s tty=%s TERM_PROGRAM=%s sid=%s\n' \
+    "$(date +%H:%M:%S)" "${SOURCE_APP:-nil}" "${SOURCE_BUNDLE_ID:-nil}" \
+    "${SOURCE_CONFIDENCE:-nil}" "${SHELL_PID:-nil}" "${SHELL_PPID:-nil}" \
+    "${TERMINAL_TTY:-nil}" "${TERM_PROGRAM:-unset}" "${SESSION_ID:-nil}"
+} >> /tmp/beacon_source_debug.log 2>/dev/null || true
 
 json_escape() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -233,6 +417,12 @@ payload='{"event":"'"$(json_escape "$EVENT")"'","session_id":"'"$(json_escape "$
 [ -n "$SOURCE_BUNDLE_ID" ] && payload+=',"source_bundle_id":"'"$(json_escape "$SOURCE_BUNDLE_ID")"'"'
 [ -n "$SOURCE_PID" ] && payload+=',"source_pid":'"$SOURCE_PID"
 [ -n "$SOURCE_CONFIDENCE" ] && payload+=',"source_confidence":"'"$(json_escape "$SOURCE_CONFIDENCE")"'"'
+[ -n "$SHELL_PID" ] && payload+=',"shell_pid":'"$SHELL_PID"
+[ -n "$SHELL_PPID" ] && payload+=',"shell_ppid":'"$SHELL_PPID"
+[ -n "$TERMINAL_TTY" ] && payload+=',"terminal_tty":"'"$(json_escape "$TERMINAL_TTY")"'"'
+[ -n "$TERMINAL_SESSION_ID" ] && payload+=',"terminal_session_id":"'"$(json_escape "$TERMINAL_SESSION_ID")"'"'
+[ -n "$TERMINAL_WINDOW_ID" ] && payload+=',"terminal_window_id":"'"$(json_escape "$TERMINAL_WINDOW_ID")"'"'
+[ -n "$TERMINAL_PANE_ID" ] && payload+=',"terminal_pane_id":"'"$(json_escape "$TERMINAL_PANE_ID")"'"'
 
 payload+='}'
 

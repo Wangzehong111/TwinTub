@@ -25,4 +25,20 @@ if [ -f "$SETTINGS_FILE" ] && command -v jq >/dev/null 2>&1; then
   jq '. as $root | if ($root.hooks // null) == null then . + {hooks: {}} else . end' "$SETTINGS_FILE" > "$TMP_FILE"
   mv "$TMP_FILE" "$SETTINGS_FILE"
   echo "Normalized hooks root in $SETTINGS_FILE"
+
+  REQUIRED_EVENTS=(UserPromptSubmit PostToolUse PermissionRequest Notification Stop SessionEnd)
+  MISSING_EVENTS=()
+  for event in "${REQUIRED_EVENTS[@]}"; do
+    if ! jq -e --arg event "$event" '.hooks[$event] // empty' "$SETTINGS_FILE" >/dev/null; then
+      MISSING_EVENTS+=("$event")
+    fi
+  done
+
+  if [ "${#MISSING_EVENTS[@]}" -gt 0 ]; then
+    echo ""
+    echo "Warning: missing hook event mappings in $SETTINGS_FILE:"
+    printf '  - %s\n' "${MISSING_EVENTS[@]}"
+    echo "Please ensure these events call:"
+    echo "  $TARGET_SCRIPT"
+  fi
 fi

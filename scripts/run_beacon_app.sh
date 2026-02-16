@@ -16,6 +16,70 @@ if [ "${1:-}" = "--no-run" ]; then
   SHOULD_OPEN=0
 fi
 
+kill_existing_instances() {
+  local pids=()
+  local helper_pids=()
+  local seen=" "
+
+  # Collect running BeaconApp instances from both derived data and dist bundles.
+  while IFS= read -r pid; do
+    [ -z "$pid" ] && continue
+    if [[ "$seen" != *" $pid "* ]]; then
+      pids+=("$pid")
+      seen="$seen$pid "
+    fi
+
+    # Include debugger parents that can respawn BeaconApp immediately.
+    local parent
+    parent="$(ps -p "$pid" -o ppid= 2>/dev/null | tr -d ' ')"
+    if [ -n "$parent" ] && [ "$parent" -gt 1 ] 2>/dev/null; then
+      if [[ "$seen" != *" $parent "* ]]; then
+        helper_pids+=("$parent")
+        seen="$seen$parent "
+      fi
+      local grandparent
+      grandparent="$(ps -p "$parent" -o ppid= 2>/dev/null | tr -d ' ')"
+      if [ -n "$grandparent" ] && [ "$grandparent" -gt 1 ] 2>/dev/null; then
+        if [[ "$seen" != *" $grandparent "* ]]; then
+          helper_pids+=("$grandparent")
+          seen="$seen$grandparent "
+        fi
+      fi
+    fi
+  done < <(pgrep -f "/(DerivedData|dist)/.*/BeaconApp" || true)
+
+  # Explicitly collect debugserver processes attached to Beacon debug builds.
+  while IFS= read -r pid; do
+    [ -z "$pid" ] && continue
+    if [[ "$seen" != *" $pid "* ]]; then
+      helper_pids+=("$pid")
+      seen="$seen$pid "
+    fi
+  done < <(pgrep -f "debugserver.*Beacon.*/Build/Products/Debug/BeaconApp" || true)
+
+  if [ "${#pids[@]}" -eq 0 ] && [ "${#helper_pids[@]}" -eq 0 ]; then
+    return
+  fi
+
+  if [ "${#pids[@]}" -gt 0 ]; then
+    echo "Stopping existing BeaconApp instances: ${pids[*]}"
+    kill "${pids[@]}" 2>/dev/null || true
+  fi
+  if [ "${#helper_pids[@]}" -gt 0 ]; then
+    echo "Stopping debugger helper processes: ${helper_pids[*]}"
+    kill "${helper_pids[@]}" 2>/dev/null || true
+  fi
+  sleep 0.4
+
+  # Force kill any stragglers to avoid launching stale menu bar instances.
+  while IFS= read -r pid; do
+    [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
+  done < <(pgrep -f "/(DerivedData|dist)/.*/BeaconApp" || true)
+  while IFS= read -r pid; do
+    [ -n "$pid" ] && kill -9 "$pid" 2>/dev/null || true
+  done < <(pgrep -f "debugserver.*Beacon.*/Build/Products/Debug/BeaconApp" || true)
+}
+
 generate_icon_icns() {
   local source_png="$1"
   local target_icns="$2"
@@ -47,6 +111,15 @@ generate_icon_icns() {
   iconutil -c icns "$iconset_dir" -o "$target_icns"
   rm -rf "$iconset_dir"
 }
+
+kill_existing_instances
+
+# Sync hook bridge to ~/.claude/hooks/
+if [ -f "$ROOT_DIR/hooks/beacon_hook_bridge.sh" ]; then
+  mkdir -p "$HOME/.claude/hooks"
+  cp "$ROOT_DIR/hooks/beacon_hook_bridge.sh" "$HOME/.claude/hooks/beacon_hook_bridge.sh"
+  chmod +x "$HOME/.claude/hooks/beacon_hook_bridge.sh"
+fi
 
 xcodebuild \
   -scheme Beacon \
@@ -107,6 +180,7 @@ cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/$EXECUTABLE_NAME"
 chmod +x "$APP_BUNDLE/Contents/MacOS/$EXECUTABLE_NAME"
 
 if [ "$SHOULD_OPEN" -eq 1 ]; then
+  kill_existing_instances
   open "$APP_BUNDLE"
 fi
 

@@ -37,6 +37,13 @@ struct SessionCardView: View {
                         .foregroundStyle(ThemeTokens.textDim(for: colorScheme))
                     SegmentedUsageBarView(filled: session.usageSegments)
                 }
+
+                if let sourceLine = session.sourceDisplayLine {
+                    Text(sourceLine)
+                        .font(ThemeTokens.mono(size: 9))
+                        .foregroundStyle(ThemeTokens.textDim(for: colorScheme))
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 

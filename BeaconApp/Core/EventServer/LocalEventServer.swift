@@ -4,14 +4,17 @@ import Network
 public final class LocalEventServer: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "beacon.event.server")
-    private let eventHandler: @MainActor (BeaconEvent) -> Void
+    private let eventHandler: @Sendable (BeaconEvent) -> Void
 
-    public init(port: UInt16 = 55771, eventHandler: @escaping @MainActor (BeaconEvent) -> Void) throws {
-        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+    private let debugHandler: (@Sendable () -> String)?
+
+    public init(port: UInt16 = 55771, eventHandler: @escaping @Sendable (BeaconEvent) -> Void, debugHandler: (@Sendable () -> String)? = nil) throws {
+        guard         let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw ServerError.invalidPort
         }
         self.listener = try NWListener(using: .tcp, on: nwPort)
         self.eventHandler = eventHandler
+        self.debugHandler = debugHandler
     }
 
     public func start() {
@@ -90,6 +93,11 @@ public final class LocalEventServer: @unchecked Sendable {
             return httpResponse(status: 200, body: "ok")
         }
 
+        if requestLine.contains("GET /debug") {
+            let info = debugHandler?() ?? "no debug handler"
+            return httpResponse(status: 200, body: info)
+        }
+
         guard requestLine.contains("POST /event") else {
             return httpResponse(status: 404, body: "not found")
         }
@@ -101,9 +109,7 @@ public final class LocalEventServer: @unchecked Sendable {
 
         do {
             let event = try JSONDecoder.beaconEventDecoder.decode(BeaconEvent.self, from: bodyData)
-            Task { @MainActor [eventHandler] in
-                eventHandler(event)
-            }
+            eventHandler(event)
             return httpResponse(status: 202, body: "accepted")
         } catch {
             return httpResponse(status: 400, body: "invalid payload")

@@ -1,113 +1,169 @@
 import SwiftUI
 
-// Icon geometry adapted from Lucide icons (ISC License):
-// https://lucide.dev/icons/circle
-// https://lucide.dev/icons/loader-circle
-// https://lucide.dev/icons/triangle-alert
-// https://lucide.dev/icons/circle-check-big
+// Menu bar icon based on icon_design.html Concept C (Terminal + Beacon).
 struct BeaconStatusIcon: View {
     let status: SessionStore.GlobalStatus
     let color: Color
+    @State private var spinning = false
 
     var body: some View {
         GeometryReader { geometry in
-            let sx = max(0.1, geometry.size.width / 24)
-            let sy = max(0.1, geometry.size.height / 24)
-            let style = StrokeStyle(lineWidth: max(1.35, min(sx, sy) * 1.8), lineCap: .round, lineJoin: .round)
-            let paths = iconPaths(sx: sx, sy: sy, status: status)
+            let metrics = IconMetrics(size: geometry.size)
+            let baseStroke = StrokeStyle(
+                lineWidth: metrics.lineWidth(2.5, minimum: 1.3),
+                lineCap: .round,
+                lineJoin: .round
+            )
 
             ZStack {
-                ForEach(Array(paths.enumerated()), id: \.offset) { _, path in
-                    path.stroke(color, style: style)
+                terminalChevron(metrics)
+                    .stroke(color, style: baseStroke)
+
+                switch status {
+                case .processing:
+                    processingBody(metrics: metrics, baseStroke: baseStroke)
+                case .waiting:
+                    waitingBody(metrics: metrics)
+                case .idle:
+                    idleBody(metrics: metrics)
+                case .done:
+                    doneBody(metrics: metrics)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .onAppear { spinning = (status == .processing) }
+        .onChange(of: status) { _, newValue in
+            spinning = (newValue == .processing)
         }
         .accessibilityHidden(true)
     }
 
-    private func iconPaths(sx: CGFloat, sy: CGFloat, status: SessionStore.GlobalStatus) -> [Path] {
-        switch status {
-        case .idle:
-            return [
-                Circle().path(in: CGRect(x: 2 * sx, y: 2 * sy, width: 20 * sx, height: 20 * sy))
-            ]
+    private struct IconMetrics {
+        let size: CGSize
 
-        case .processing:
-            return [
-                Path { path in
-                    path.move(to: CGPoint(x: 21 * sx, y: 12 * sy))
-                    path.addCurve(
-                        to: CGPoint(x: 14.781 * sx, y: 3.44 * sy),
-                        control1: CGPoint(x: 21 * sx, y: 7.03 * sy),
-                        control2: CGPoint(x: 18.52 * sx, y: 4.09 * sy)
-                    )
-                }
-            ]
-
-        case .waiting:
-            return [
-                Path { path in
-                    path.move(to: CGPoint(x: 21.73 * sx, y: 18 * sy))
-                    path.addLine(to: CGPoint(x: 13.73 * sx, y: 4 * sy))
-                    path.addCurve(
-                        to: CGPoint(x: 10.25 * sx, y: 4 * sy),
-                        control1: CGPoint(x: 13.03 * sx, y: 2.77 * sy),
-                        control2: CGPoint(x: 10.95 * sx, y: 2.77 * sy)
-                    )
-                    path.addLine(to: CGPoint(x: 2.25 * sx, y: 18 * sy))
-                    path.addCurve(
-                        to: CGPoint(x: 4 * sx, y: 21 * sy),
-                        control1: CGPoint(x: 1.54 * sx, y: 19.23 * sy),
-                        control2: CGPoint(x: 2.43 * sx, y: 21 * sy)
-                    )
-                    path.addLine(to: CGPoint(x: 20 * sx, y: 21 * sy))
-                    path.addCurve(
-                        to: CGPoint(x: 21.73 * sx, y: 18 * sy),
-                        control1: CGPoint(x: 21.57 * sx, y: 21 * sy),
-                        control2: CGPoint(x: 22.44 * sx, y: 19.23 * sy)
-                    )
-                },
-                Path { path in
-                    path.move(to: CGPoint(x: 12 * sx, y: 9 * sy))
-                    path.addLine(to: CGPoint(x: 12 * sx, y: 13 * sy))
-                },
-                Path { path in
-                    path.move(to: CGPoint(x: 12 * sx, y: 17 * sy))
-                    path.addLine(to: CGPoint(x: 12.01 * sx, y: 17 * sy))
-                }
-            ]
-
-        case .done:
-            return [
-                Path { path in
-                    path.move(to: CGPoint(x: 21.801 * sx, y: 10 * sy))
-                    path.addCurve(
-                        to: CGPoint(x: 17 * sx, y: 3.335 * sy),
-                        control1: CGPoint(x: 20.96 * sx, y: 7.35 * sy),
-                        control2: CGPoint(x: 19.26 * sx, y: 4.98 * sy)
-                    )
-                    path.addCurve(
-                        to: CGPoint(x: 2 * sx, y: 12 * sy),
-                        control1: CGPoint(x: 13.08 * sx, y: 1.05 * sy),
-                        control2: CGPoint(x: 7.74 * sx, y: 1.79 * sy)
-                    )
-                    path.addCurve(
-                        to: CGPoint(x: 12 * sx, y: 22 * sy),
-                        control1: CGPoint(x: 2 * sx, y: 17.52 * sy),
-                        control2: CGPoint(x: 6.48 * sx, y: 22 * sy)
-                    )
-                    path.addCurve(
-                        to: CGPoint(x: 22 * sx, y: 12 * sy),
-                        control1: CGPoint(x: 17.52 * sx, y: 22 * sy),
-                        control2: CGPoint(x: 22 * sx, y: 17.52 * sy)
-                    )
-                },
-                Path { path in
-                    path.move(to: CGPoint(x: 9 * sx, y: 11 * sy))
-                    path.addLine(to: CGPoint(x: 12 * sx, y: 14 * sy))
-                    path.addLine(to: CGPoint(x: 22 * sx, y: 4 * sy))
-                }
-            ]
+        var scale: CGFloat {
+            max(0.1, min(size.width, size.height) / 24.0)
         }
+
+        func point(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(x: x * scale, y: y * scale)
+        }
+
+        func x(_ value: CGFloat) -> CGFloat {
+            value * scale
+        }
+
+        func y(_ value: CGFloat) -> CGFloat {
+            value * scale
+        }
+
+        func lineWidth(_ base: CGFloat, minimum: CGFloat) -> CGFloat {
+            max(minimum, base * scale)
+        }
+    }
+
+    private func terminalChevron(_ metrics: IconMetrics) -> Path {
+        Path { path in
+            path.move(to: metrics.point(4, 17))
+            path.addLine(to: metrics.point(10, 11))
+            path.addLine(to: metrics.point(4, 5))
+        }
+    }
+
+    @ViewBuilder
+    private func idleBody(metrics: IconMetrics) -> some View {
+        Path { path in
+            path.move(to: metrics.point(13, 19))
+            path.addLine(to: metrics.point(21, 19))
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: metrics.lineWidth(2.5, minimum: 1.3), lineCap: .round))
+
+        Circle()
+            .fill(color)
+            .frame(width: metrics.x(4), height: metrics.y(4))
+            .position(x: metrics.x(17), y: metrics.y(11))
+    }
+
+    @ViewBuilder
+    private func processingBody(metrics: IconMetrics, baseStroke: StrokeStyle) -> some View {
+        Path { path in
+            path.move(to: metrics.point(12, 19))
+            path.addLine(to: metrics.point(20, 19))
+        }
+        .stroke(
+            color.opacity(0.5),
+            style: StrokeStyle(
+                lineWidth: baseStroke.lineWidth,
+                lineCap: .round,
+                lineJoin: .round,
+                dash: [2, 2]
+            )
+        )
+
+        ZStack {
+            Path { path in
+                path.move(to: metrics.point(16, 6))
+                path.addLine(to: metrics.point(16, 14))
+            }
+            .stroke(color, style: StrokeStyle(lineWidth: metrics.lineWidth(2.0, minimum: 1.1), lineCap: .round))
+
+            Path { path in
+                path.move(to: metrics.point(12, 10))
+                path.addLine(to: metrics.point(20, 10))
+            }
+            .stroke(color, style: StrokeStyle(lineWidth: metrics.lineWidth(2.0, minimum: 1.1), lineCap: .round))
+        }
+        .rotationEffect(
+            .degrees(spinning ? 360 : 0),
+            anchor: UnitPoint(
+                x: metrics.size.width > 0 ? metrics.x(16) / metrics.size.width : 0.5,
+                y: metrics.size.height > 0 ? metrics.y(10) / metrics.size.height : 0.5
+            )
+        )
+        .animation(spinning ? .linear(duration: 3).repeatForever(autoreverses: false) : .none, value: spinning)
+    }
+
+    @ViewBuilder
+    private func waitingBody(metrics: IconMetrics) -> some View {
+        Path { path in
+            path.move(to: metrics.point(12, 18))
+            path.addLine(to: metrics.point(18, 18))
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: metrics.lineWidth(2.0, minimum: 1.1), lineCap: .round))
+
+        Circle()
+            .fill(color)
+            .frame(width: metrics.x(2.8), height: metrics.y(2.8))
+            .position(x: metrics.x(16), y: metrics.y(5))
+
+        Circle()
+            .fill(color)
+            .frame(width: metrics.x(2.8), height: metrics.y(2.8))
+            .position(x: metrics.x(19), y: metrics.y(8))
+    }
+
+    @ViewBuilder
+    private func doneBody(metrics: IconMetrics) -> some View {
+        Path { path in
+            path.move(to: metrics.point(12, 19))
+            path.addLine(to: metrics.point(20, 19))
+        }
+        .stroke(color, style: StrokeStyle(lineWidth: metrics.lineWidth(2.0, minimum: 1.1), lineCap: .round))
+
+        Path { path in
+            path.move(to: metrics.point(14.8, 10.6))
+            path.addLine(to: metrics.point(16.5, 12.6))
+            path.addLine(to: metrics.point(19.7, 8.8))
+        }
+        .stroke(
+            color,
+            style: StrokeStyle(
+                lineWidth: metrics.lineWidth(2.0, minimum: 1.1),
+                lineCap: .round,
+                lineJoin: .round
+            )
+        )
     }
 }

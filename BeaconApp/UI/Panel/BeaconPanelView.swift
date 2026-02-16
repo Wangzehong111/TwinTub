@@ -24,11 +24,7 @@ struct BeaconPanelView: View {
                                 session: session,
                                 onJumpAuto: { jumpService.jump(to: session) },
                                 onJumpManual: { target in
-                                    jumpService.jump(
-                                        cwd: session.cwd ?? NSHomeDirectory(),
-                                        projectName: session.projectName,
-                                        forcedTarget: target
-                                    )
+                                    jumpService.jump(session: session, forcedTarget: target)
                                 }
                             )
                         }

@@ -39,10 +39,12 @@ final class SessionReducerTests: XCTestCase {
 
         let remove = BeaconEvent(event: .sessionEnd, sessionID: "s1")
         let removeMutation = SessionReducer.reduce(current: doneModel, event: remove, now: now)
-        guard case let .remove(sessionID) = removeMutation else {
-            return XCTFail("Expected remove for SessionEnd")
+        guard case let .upsert(endedModel, _) = removeMutation else {
+            return XCTFail("Expected upsert for SessionEnd")
         }
-        XCTAssertEqual(sessionID, "s1")
+        XCTAssertEqual(endedModel.id, "s1")
+        XCTAssertEqual(endedModel.livenessState, .terminated)
+        XCTAssertEqual(endedModel.terminationReason, .sessionEndEvent)
     }
 
     func testOutOfOrderWaitingThenUserPromptResumesProcessing() {
@@ -81,7 +83,11 @@ final class SessionReducerTests: XCTestCase {
             sourceApp: "Terminal.app",
             sourceBundleID: "com.apple.Terminal",
             sourcePID: 1234,
-            sourceConfidence: .high
+            sourceConfidence: .high,
+            shellPID: 2222,
+            shellPPID: 1111,
+            terminalTTY: "/dev/ttys009",
+            terminalSessionID: "w0t0p0"
         )
 
         let first = SessionReducer.reduce(current: nil, event: start, now: now)
@@ -92,6 +98,13 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertEqual(model1.sourceBundleID, "com.apple.Terminal")
         XCTAssertEqual(model1.sourcePID, 1234)
         XCTAssertEqual(model1.sourceConfidence, .high)
+        XCTAssertEqual(model1.shellPID, 2222)
+        XCTAssertEqual(model1.shellPPID, 1111)
+        XCTAssertEqual(model1.terminalTTY, "/dev/ttys009")
+        XCTAssertEqual(model1.terminalSessionID, "w0t0p0")
+        XCTAssertEqual(model1.livenessState, .alive)
+        XCTAssertNotNil(model1.lastSeenAliveAt)
+        XCTAssertNotNil(model1.sourceFingerprint)
 
         let keepSource = BeaconEvent(event: .postToolUse, sessionID: "s3")
         let second = SessionReducer.reduce(current: model1, event: keepSource, now: now.addingTimeInterval(1))
@@ -102,6 +115,13 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertEqual(model2.sourceBundleID, "com.apple.Terminal")
         XCTAssertEqual(model2.sourcePID, 1234)
         XCTAssertEqual(model2.sourceConfidence, .high)
+        XCTAssertEqual(model2.shellPID, 2222)
+        XCTAssertEqual(model2.shellPPID, 1111)
+        XCTAssertEqual(model2.terminalTTY, "/dev/ttys009")
+        XCTAssertEqual(model2.terminalSessionID, "w0t0p0")
+        XCTAssertEqual(model2.livenessState, .alive)
+        XCTAssertNotNil(model2.lastSeenAliveAt)
+        XCTAssertNotNil(model2.sourceFingerprint)
 
         let overrideSource = BeaconEvent(
             event: .permissionRequest,
@@ -109,7 +129,11 @@ final class SessionReducerTests: XCTestCase {
             sourceApp: "iTerm2",
             sourceBundleID: "com.googlecode.iterm2",
             sourcePID: 5678,
-            sourceConfidence: .medium
+            sourceConfidence: .medium,
+            shellPID: 3333,
+            shellPPID: 2222,
+            terminalTTY: "/dev/ttys010",
+            terminalSessionID: "w3t4p0"
         )
         let third = SessionReducer.reduce(current: model2, event: overrideSource, now: now.addingTimeInterval(2))
         guard case let .upsert(model3, _) = third else {
@@ -119,5 +143,12 @@ final class SessionReducerTests: XCTestCase {
         XCTAssertEqual(model3.sourceBundleID, "com.googlecode.iterm2")
         XCTAssertEqual(model3.sourcePID, 5678)
         XCTAssertEqual(model3.sourceConfidence, .medium)
+        XCTAssertEqual(model3.shellPID, 3333)
+        XCTAssertEqual(model3.shellPPID, 2222)
+        XCTAssertEqual(model3.terminalTTY, "/dev/ttys010")
+        XCTAssertEqual(model3.terminalSessionID, "w3t4p0")
+        XCTAssertEqual(model3.livenessState, .alive)
+        XCTAssertNotNil(model3.lastSeenAliveAt)
+        XCTAssertNotNil(model3.sourceFingerprint)
     }
 }

@@ -21,11 +21,23 @@ public struct SessionReducer {
         current: SessionModel?,
         event: BeaconEvent,
         now: Date,
+        terminatedHistoryRetention: TimeInterval = 300,
         notifySilenceWindow: TimeInterval = 120,
         notifyEscalationWindow: TimeInterval = 180
     ) -> Mutation {
         if event.event == .sessionEnd {
-            return .remove(event.sessionID)
+            guard var model = current else {
+                return .none
+            }
+            model.status = .completed
+            model.statusReason = "SESSION_ENDED"
+            model.completedAt = now
+            model.waitingSince = nil
+            model.livenessState = .terminated
+            model.terminationReason = .sessionEndEvent
+            model.cleanupDeadline = now.addingTimeInterval(terminatedHistoryRetention)
+            model.offlineMarkedAt = nil
+            return .upsert(model, nil)
         }
 
         var model = current ?? SessionModel(
@@ -40,7 +52,15 @@ public struct SessionReducer {
             sourceApp: event.sourceApp,
             sourceBundleID: event.sourceBundleID,
             sourcePID: event.sourcePID,
-            sourceConfidence: event.sourceConfidence ?? .unknown
+            sourceConfidence: event.sourceConfidence ?? .unknown,
+            shellPID: event.shellPID,
+            shellPPID: event.shellPPID,
+            terminalTTY: event.terminalTTY,
+            terminalSessionID: event.terminalSessionID,
+            terminalWindowID: event.terminalWindowID,
+            terminalPaneID: event.terminalPaneID,
+            livenessState: .alive,
+            lastSeenAliveAt: now
         )
 
         model.updatedAt = now
@@ -60,6 +80,35 @@ public struct SessionReducer {
         if let sourceConfidence = event.sourceConfidence {
             model.sourceConfidence = sourceConfidence
         }
+        if let shellPID = event.shellPID {
+            model.shellPID = shellPID
+        }
+        if let shellPPID = event.shellPPID {
+            model.shellPPID = shellPPID
+        }
+        if let terminalTTY = event.terminalTTY, !terminalTTY.isEmpty {
+            model.terminalTTY = terminalTTY
+        }
+        if let terminalSessionID = event.terminalSessionID, !terminalSessionID.isEmpty {
+            model.terminalSessionID = terminalSessionID
+        }
+        if let terminalWindowID = event.terminalWindowID, !terminalWindowID.isEmpty {
+            model.terminalWindowID = terminalWindowID
+        }
+        if let terminalPaneID = event.terminalPaneID, !terminalPaneID.isEmpty {
+            model.terminalPaneID = terminalPaneID
+        }
+        model.sourceFingerprint = SessionModel.buildSourceFingerprint(
+            sourceBundleID: model.sourceBundleID,
+            terminalTTY: model.terminalTTY,
+            shellPID: model.shellPID,
+            sourcePID: model.sourcePID
+        )
+        model.livenessState = .alive
+        model.lastSeenAliveAt = now
+        model.offlineMarkedAt = nil
+        model.cleanupDeadline = nil
+        model.terminationReason = nil
 
         switch event.event {
         case .userPromptSubmit:

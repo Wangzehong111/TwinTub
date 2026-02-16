@@ -29,6 +29,21 @@ public enum SessionStatus: String, Codable, CaseIterable, Sendable {
     }
 }
 
+public enum SessionLivenessState: String, Codable, CaseIterable, Sendable {
+    case alive
+    case suspectOffline
+    case offline
+    case terminated
+}
+
+public enum SessionTerminationReason: String, Codable, CaseIterable, Sendable {
+    case sessionEndEvent
+    case processMissing
+    case ttyMissing
+    case heartbeatTimeout
+    case manual
+}
+
 public struct SessionModel: Identifiable, Equatable, Sendable {
     public let id: String
     public var projectName: String
@@ -46,6 +61,18 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
     public var sourceBundleID: String?
     public var sourcePID: Int?
     public var sourceConfidence: SourceConfidence
+    public var shellPID: Int?
+    public var shellPPID: Int?
+    public var terminalTTY: String?
+    public var terminalSessionID: String?
+    public var terminalWindowID: String?
+    public var terminalPaneID: String?
+    public var livenessState: SessionLivenessState
+    public var lastSeenAliveAt: Date?
+    public var offlineMarkedAt: Date?
+    public var cleanupDeadline: Date?
+    public var terminationReason: SessionTerminationReason?
+    public var sourceFingerprint: String?
 
     public init(
         id: String,
@@ -63,7 +90,19 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         sourceApp: String? = nil,
         sourceBundleID: String? = nil,
         sourcePID: Int? = nil,
-        sourceConfidence: SourceConfidence = .unknown
+        sourceConfidence: SourceConfidence = .unknown,
+        shellPID: Int? = nil,
+        shellPPID: Int? = nil,
+        terminalTTY: String? = nil,
+        terminalSessionID: String? = nil,
+        terminalWindowID: String? = nil,
+        terminalPaneID: String? = nil,
+        livenessState: SessionLivenessState = .alive,
+        lastSeenAliveAt: Date? = nil,
+        offlineMarkedAt: Date? = nil,
+        cleanupDeadline: Date? = nil,
+        terminationReason: SessionTerminationReason? = nil,
+        sourceFingerprint: String? = nil
     ) {
         self.id = id
         self.projectName = projectName
@@ -81,6 +120,18 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         self.sourceBundleID = sourceBundleID
         self.sourcePID = sourcePID
         self.sourceConfidence = sourceConfidence
+        self.shellPID = shellPID
+        self.shellPPID = shellPPID
+        self.terminalTTY = terminalTTY
+        self.terminalSessionID = terminalSessionID
+        self.terminalWindowID = terminalWindowID
+        self.terminalPaneID = terminalPaneID
+        self.livenessState = livenessState
+        self.lastSeenAliveAt = lastSeenAliveAt
+        self.offlineMarkedAt = offlineMarkedAt
+        self.cleanupDeadline = cleanupDeadline
+        self.terminationReason = terminationReason
+        self.sourceFingerprint = sourceFingerprint
     }
 
     public var displayStatusLine: String {
@@ -100,5 +151,39 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         guard usageBytes > 0 else { return 0 }
         let ratio = min(Double(usageBytes) / Double(maxContextBytes), 1.0)
         return min(10, max(1, Int(ceil(ratio * 10))))
+    }
+
+    public var sourceDisplayLine: String? {
+        guard sourceApp != nil || terminalTTY != nil || terminalSessionID != nil else {
+            return nil
+        }
+
+        var pieces: [String] = []
+        if let sourceApp, !sourceApp.isEmpty {
+            pieces.append(sourceApp)
+        }
+
+        if let terminalTTY, !terminalTTY.isEmpty {
+            pieces.append(terminalTTY)
+        } else if let terminalSessionID, !terminalSessionID.isEmpty {
+            pieces.append(terminalSessionID)
+        }
+
+        return pieces.joined(separator: " · ")
+    }
+
+    public static func buildSourceFingerprint(
+        sourceBundleID: String?,
+        terminalTTY: String?,
+        shellPID: Int?,
+        sourcePID: Int?
+    ) -> String? {
+        let bundle = sourceBundleID?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let tty = terminalTTY?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let pid = shellPID ?? sourcePID ?? 0
+        guard !bundle.isEmpty || !tty.isEmpty || pid > 0 else {
+            return nil
+        }
+        return "\(bundle)|\(tty)|\(pid)"
     }
 }
