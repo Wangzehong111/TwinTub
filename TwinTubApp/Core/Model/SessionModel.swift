@@ -216,7 +216,7 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
     }
 
     public var sourceDisplayLine: String? {
-        guard sourceApp != nil || terminalTTY != nil || terminalSessionID != nil else {
+        guard sourceApp != nil || cwd != nil else {
             return nil
         }
 
@@ -225,13 +225,22 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
             pieces.append(sourceApp)
         }
 
-        if let terminalTTY, !terminalTTY.isEmpty {
-            pieces.append(terminalTTY)
-        } else if let terminalSessionID, !terminalSessionID.isEmpty {
-            pieces.append(terminalSessionID)
+        if let cwd, !cwd.isEmpty {
+            pieces.append(shortPath(from: cwd))
         }
 
         return pieces.joined(separator: " · ")
+    }
+
+    /// 提取路径的最后两级目录
+    /// - Parameter fullPath: 完整路径
+    /// - Returns: 最后两级目录（如 "Projects/Beacon"）
+    private func shortPath(from fullPath: String) -> String {
+        let components = fullPath.split(separator: "/").map(String.init)
+        if components.count <= 2 {
+            return fullPath
+        }
+        return components.suffix(2).joined(separator: "/")
     }
 
     public static func buildSourceFingerprint(
