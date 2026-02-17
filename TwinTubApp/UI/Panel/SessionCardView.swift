@@ -73,8 +73,17 @@ struct SessionCardView: View {
             RoundedRectangle(cornerRadius: 10)
                 .stroke(ThemeTokens.border(for: colorScheme), lineWidth: 1)
         )
-        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
-        .onAppear { pulse = true }
+        .animation(
+            shouldAnimatePulse
+                ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+                : .default,
+            value: pulse
+        )
+        .onAppear {
+            if shouldAnimatePulse {
+                pulse = true
+            }
+        }
         .confirmationDialog("SELECT JUMP TARGET", isPresented: $showJumpPicker, titleVisibility: .visible) {
             ForEach(manualTargets) { target in
                 Button(target.displayName) {
@@ -96,6 +105,10 @@ struct SessionCardView: View {
             jumpReason = reason
             showJumpPicker = true
         }
+    }
+
+    private var shouldAnimatePulse: Bool {
+        session.status == .processing || session.status == .waiting
     }
 
     private var statusColor: Color {

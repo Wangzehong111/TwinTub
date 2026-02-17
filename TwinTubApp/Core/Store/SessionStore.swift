@@ -28,6 +28,11 @@ public final class SessionStore: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let sessionSubject = PassthroughSubject<[SessionModel], Never>()
 
+    // MARK: - Dirty Flag for Optimized Publishing
+    private var lastPublishedSessionIDs: Set<String> = []
+    private var lastPublishedStatusHash: Int = 0
+    private var needsPublish = false
+
     public init(
         notificationService: NotificationDispatching,
         livenessMonitor: SessionLivenessMonitor = SessionLivenessMonitor(),
@@ -225,33 +230,47 @@ public final class SessionStore: ObservableObject {
     }
 
     private func publishSessions(now: Date) {
-        let sorted = sessionMap.values
-            .filter { $0.status != .destroyed }
-            .filter { $0.livenessState != .terminated }
-            .sorted(by: Self.sortPredicate)
+        let visibleSessions = sessionMap.values
+            .filter { $0.status != .destroyed && $0.livenessState != .terminated }
 
-        sessionSubject.send(sorted)
+        // Check if session IDs changed
+        let currentSessionIDs = Set(visibleSessions.map { $0.id })
+        let sessionIDsChanged = currentSessionIDs != lastPublishedSessionIDs
 
-        let waitingCount = sorted.filter { $0.status == .waiting }.count
-        let hasProcessing = sorted.contains(where: { $0.status == .processing })
-
-        // 新优先级：processing > waiting > done > idle
-        if hasProcessing {
-            globalStatus = .processing(hasWaiting: waitingCount > 0)
-            return
+        // Check if any session content changed (status, usage, etc.)
+        let contentHash = visibleSessions.reduce(0) { hash, session in
+            hash ^ session.id.hashValue ^ session.status.hashValue ^ session.usageSegments.hashValue ^ session.statusReason.hashValue
         }
+        let contentChanged = contentHash != lastPublishedStatusHash
 
-        if waitingCount > 0 {
-            globalStatus = .waiting(count: waitingCount)
-            return
+        // Only sort and publish if something actually changed
+        if sessionIDsChanged || contentChanged {
+            let sorted = visibleSessions.sorted(by: Self.sortPredicate)
+            sessionSubject.send(sorted)
+            lastPublishedSessionIDs = currentSessionIDs
+            lastPublishedStatusHash = contentHash
+
+            let waitingCount = sorted.filter { $0.status == .waiting }.count
+            let hasProcessing = sorted.contains(where: { $0.status == .processing })
+
+            // 新优先级：processing > waiting > done > idle
+            if hasProcessing {
+                globalStatus = .processing(hasWaiting: waitingCount > 0)
+                return
+            }
+
+            if waitingCount > 0 {
+                globalStatus = .waiting(count: waitingCount)
+                return
+            }
+
+            if let doneVisibleUntil, doneVisibleUntil > now {
+                globalStatus = .done
+                return
+            }
+
+            globalStatus = .idle
         }
-
-        if let doneVisibleUntil, doneVisibleUntil > now {
-            globalStatus = .done
-            return
-        }
-
-        globalStatus = .idle
     }
 
     private static func sortPredicate(lhs: SessionModel, rhs: SessionModel) -> Bool {

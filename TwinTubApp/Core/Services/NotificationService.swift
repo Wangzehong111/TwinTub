@@ -84,6 +84,11 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
     private let queue = DispatchQueue(label: "twintub.notification.center", qos: .utility)
     private var authorizationRequested = false
 
+    // MARK: - Authorization Status Cache
+    private var cachedAuthorizationStatus: UNAuthorizationStatus?
+    private var cacheTimestamp: Date?
+    private let cacheValidityDuration: TimeInterval = 60.0 // Cache for 60 seconds
+
     init(
         center: UNUserNotificationCenter = .current(),
         fallback: NotificationSending
@@ -96,42 +101,64 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
         queue.async { [weak self] in
             guard let self, !self.authorizationRequested else { return }
             self.authorizationRequested = true
-            self.center.getNotificationSettings { settings in
+            self.center.getNotificationSettings { [weak self] settings in
+                guard let self else { return }
+                self.cachedAuthorizationStatus = settings.authorizationStatus
+                self.cacheTimestamp = Date()
                 guard settings.authorizationStatus == .notDetermined else { return }
-                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in
-                    // Best effort: ignore failures and fallback when posting.
+                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, _ in
+                    guard let self else { return }
+                    // Update cache after request
+                    self.cachedAuthorizationStatus = granted ? .authorized : .denied
+                    self.cacheTimestamp = Date()
                 }
             }
         }
     }
 
     func send(title: String, body: String, sound: String, sessionID: String?) {
+        // Check if we can use cached authorization status
+        if let cached = cachedAuthorizationStatus, let timestamp = cacheTimestamp,
+           Date().timeIntervalSince(timestamp) < cacheValidityDuration {
+            sendWithAuthorizationStatus(cached, title: title, body: body, sound: sound, sessionID: sessionID)
+            return
+        }
+
+        // Cache expired or not set, fetch fresh status
         center.getNotificationSettings { [weak self] settings in
             guard let self else { return }
             let status = settings.authorizationStatus
-            NSLog("[TwinTub] Notification authorization status: \(status.rawValue) (\(status.name))")
-            switch status {
-            case .authorized, .provisional, .ephemeral:
-                NSLog("[TwinTub] Posting via UNUserNotificationCenter")
-                self.postViaUserNotifications(title: title, body: body, sound: sound, sessionID: sessionID)
-            case .notDetermined:
-                NSLog("[TwinTub] Authorization not determined, requesting...")
-                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                    if granted {
-                        NSLog("[TwinTub] Authorization granted, posting via UNUserNotificationCenter")
-                        self.postViaUserNotifications(title: title, body: body, sound: sound, sessionID: sessionID)
-                    } else {
-                        NSLog("[TwinTub] Authorization denied, falling back to AppleScript")
-                        self.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
-                    }
+            self.cachedAuthorizationStatus = status
+            self.cacheTimestamp = Date()
+            self.sendWithAuthorizationStatus(status, title: title, body: body, sound: sound, sessionID: sessionID)
+        }
+    }
+
+    private func sendWithAuthorizationStatus(_ status: UNAuthorizationStatus, title: String, body: String, sound: String, sessionID: String?) {
+        NSLog("[TwinTub] Notification authorization status: \(status.rawValue) (\(status.name))")
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            NSLog("[TwinTub] Posting via UNUserNotificationCenter")
+            self.postViaUserNotifications(title: title, body: body, sound: sound, sessionID: sessionID)
+        case .notDetermined:
+            NSLog("[TwinTub] Authorization not determined, requesting...")
+            self.center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, _ in
+                self?.cachedAuthorizationStatus = granted ? .authorized : .denied
+                self?.cacheTimestamp = Date()
+                if granted {
+                    NSLog("[TwinTub] Authorization granted, posting via UNUserNotificationCenter")
+                    self?.postViaUserNotifications(title: title, body: body, sound: sound, sessionID: sessionID)
+                } else {
+                    NSLog("[TwinTub] Authorization denied, falling back to AppleScript")
+                    self?.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
                 }
-            case .denied:
-                NSLog("[TwinTub] Authorization denied, falling back to AppleScript")
-                self.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
-            @unknown default:
-                NSLog("[TwinTub] Unknown authorization status, falling back to AppleScript")
-                self.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
             }
+        case .denied:
+            NSLog("[TwinTub] Authorization denied, falling back to AppleScript")
+            self.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
+        @unknown default:
+            NSLog("[TwinTub] Unknown authorization status, falling back to AppleScript")
+            self.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
         }
     }
 
@@ -204,16 +231,16 @@ final class InProcessAppleScriptSender: NotificationSending {
 
     private func runInProcess(source: String) -> Bool {
         var succeeded = false
-        let executeBlock = {
-            var error: NSDictionary?
-            _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
-            succeeded = (error == nil)
-        }
+        var error: NSDictionary?
 
         if Thread.isMainThread {
-            executeBlock()
+            _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
+            succeeded = (error == nil)
         } else {
-            DispatchQueue.main.sync(execute: executeBlock)
+            DispatchQueue.main.sync {
+                _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
+                succeeded = (error == nil)
+            }
         }
 
         return succeeded
