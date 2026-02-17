@@ -3,47 +3,50 @@
 [![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](https://choosealicense.com/licenses/mit/)
 [![macOS](https://img.shields.io/badge/platform-macOS-blue.svg)](https://www.apple.com/macos)
 
-**TwinTub** 是一个 macOS Menu Bar 应用程序，用于监控 Claude Code CLI 的多会话状态。它提供 "Native & Retro" 设计风格的沉浸式终端美学体验。
+**TwinTub** is a macOS Menu Bar application for monitoring Claude Code CLI multi-session status. It provides a "Native & Retro" design experience with immersive terminal aesthetics.
 
-![TwinTub Dark Mode](docs/twintub_dark.png)
+[中文文档](README_CN.md)
 
-## 功能特性
+<p align="center">
+  <img src="docs/twintub_dark.png" alt="Dark Mode" width="45%" />
+  <img src="docs/twintub_bright.png" alt="Light Mode" width="45%" />
+</p>
 
-- **实时状态监控**：追踪空闲、处理中、等待、已完成状态
-- **多会话支持**：同时监控多个 Claude Code 会话
-- **终端跳转**：点击跳转回原始终端 Tab
-- **系统通知**：会话需要关注或完成时获得通知
-- **深色/浅色主题**：自动检测系统主题，支持手动切换
-- **Context 使用可视化**：10段式进度条显示上下文窗口使用量
+## Features
 
-![TwinTub Light Mode](docs/twintub_bright.png)
+- **Real-time Status Monitoring**: Track idle, processing, waiting, and completed states
+- **Multi-session Support**: Monitor multiple Claude Code sessions simultaneously
+- **Terminal Jump**: Click to jump back to the original terminal tab
+- **System Notifications**: Get notified when sessions need attention or complete
+- **Dark/Light Theme**: Automatic system detection with manual override
+- **Context Usage Visualization**: 10-segment progress bar for context window usage
 
-### 支持的终端
+### Supported Terminals
 
-- **终端应用**：Terminal.app, iTerm2, Warp, Ghostty, WezTerm, Kitty, Alacritty, Tabby, Hyper, Rio, Kaku
-- **IDE 终端**：Cursor, VS Code, Zed
+- **Terminals**: Terminal.app, iTerm2, Warp, Ghostty, WezTerm, Kitty, Alacritty, Tabby, Hyper, Rio, Kaku
+- **IDE Terminals**: Cursor, VS Code, Zed
 
-## 安装
+## Installation
 
-### 一键安装（推荐）
+### One-line Install (Recommended)
 
 ```bash
 curl -sL https://raw.githubusercontent.com/Wangzehong111/TwinTub/main/install.sh | bash
 ```
 
-### 卸载
+### Uninstall
 
 ```bash
 curl -sL https://raw.githubusercontent.com/Wangzehong111/TwinTub/main/uninstall.sh | bash
 ```
 
-### 手动安装
+### Manual Installation
 
-1. 从 [Releases](https://github.com/Wangzehong111/TwinTub/releases) 下载最新版本
-2. 将 `TwinTub.app` 解压到 `/Applications`
-3. 首次启动：右键点击 → 打开（未签名应用需要此操作）
+1. Download the latest release from [Releases](https://github.com/Wangzehong111/TwinTub/releases)
+2. Extract `TwinTub.app` to `/Applications`
+3. First launch: Right-click → Open (required for unsigned apps)
 
-### 从源码构建
+### Build from Source
 
 ```bash
 git clone https://github.com/Wangzehong111/TwinTub.git
@@ -51,52 +54,52 @@ cd TwinTub
 ./scripts/run_twintub_app.sh
 ```
 
-## 快速开始
+## Quick Start
 
-1. **启动 TwinTub** - 应用会出现在菜单栏
+1. **Launch TwinTub** - The app appears in your menu bar
 
-2. **安装 Hooks**（监控所必需）：
+2. **Install Hooks** (required for monitoring):
    ```bash
    ./hooks/install_hooks.sh
    ```
 
-3. **开始使用 Claude Code** - 会话会自动出现
+3. **Start using Claude Code** - Sessions appear automatically
 
-4. **点击跳转** - 点击 Jump 按钮返回终端
+4. **Click to Jump** - Click the Jump button to return to the terminal
 
-## 开发
+## Development
 
-### 构建
+### Build
 
 ```bash
-# 使用构建脚本（推荐）
+# Using the build script (recommended)
 ./scripts/run_twintub_app.sh --no-run
 
-# 使用 xcodebuild
+# Using xcodebuild directly
 xcodebuild -scheme TwinTub -destination 'platform=macOS' build
 ```
 
-### 测试
+### Test
 
 ```bash
 xcodebuild -scheme TwinTub -destination 'platform=macOS' test
 ```
 
-### 健康检查
+### Health Check
 
 ```bash
 curl -i http://127.0.0.1:55771/health
 ```
 
-### 模拟事件
+### Simulate Events
 
 ```bash
 ./scripts/simulate_events.sh
 ```
 
-## 架构
+## Architecture
 
-TwinTub 使用 **Sidecar 模式** 与 Claude Code CLI 集成：
+TwinTub uses a **Sidecar Pattern** for Claude Code CLI integration:
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
@@ -105,7 +108,7 @@ TwinTub 使用 **Sidecar 模式** 与 Claude Code CLI 集成：
 └─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
-内部架构遵循 **Redux 模式**：
+Internal architecture follows **Redux-like Pattern**:
 
 ```
 TwinTubEvent → EventBridge → SessionStore → SwiftUI Views
@@ -117,49 +120,49 @@ TwinTubEvent → EventBridge → SessionStore → SwiftUI Views
                   └─→ Coalesce by session, 100ms flush
 ```
 
-### 关键文件
+### Key Files
 
-| 文件 | 用途 |
-|------|------|
-| `TwinTubApp/App/TwinTubApp.swift` | App 入口，EventBridge，AppDelegate |
-| `TwinTubApp/Core/Configuration/TwinTubConfig.swift` | 全局配置常量 |
-| `TwinTubApp/Core/State/SessionReducer.swift` | 状态变更纯函数 |
-| `TwinTubApp/Core/Store/SessionStore.swift` | 状态管理 |
-| `TwinTubApp/Core/Services/SessionLivenessMonitor.swift` | 进程/TTY 验证 |
+| File | Purpose |
+|------|---------|
+| `TwinTubApp/App/TwinTubApp.swift` | App entry point, EventBridge, AppDelegate |
+| `TwinTubApp/Core/Configuration/TwinTubConfig.swift` | Global configuration constants |
+| `TwinTubApp/Core/State/SessionReducer.swift` | Pure function for state mutations |
+| `TwinTubApp/Core/Store/SessionStore.swift` | State management |
+| `TwinTubApp/Core/Services/SessionLivenessMonitor.swift` | Process/TTY validation |
 
-## 会话生命周期
+## Session Lifecycle
 
-会话通过双源真相管理：
+Sessions are managed through dual-source truth:
 
-1. **Hook Events**：驱动会话创建和状态更新
-2. **Liveness Monitor**：每 5 秒通过 `ps` 快照进行后台验证
+1. **Hook Events**: Drive session creation and status updates
+2. **Liveness Monitor**: Background validation via `ps` snapshots every 5 seconds
 
-状态转换：
+State transitions:
 ```
-alive → suspectOffline (首次丢失) → offline (超过宽限期) → terminated
+alive → suspectOffline (first miss) → offline (grace exceeded) → terminated
 ```
 
-默认配置：
-- **离线宽限期**：20 秒
-- **终止后保留**：300 秒
-- **硬性过期**：1800 秒
+Default configuration:
+- **Offline grace period**: 20 seconds
+- **Terminated retention**: 300 seconds
+- **Hard expiry**: 1800 seconds
 
-## 终端跳转行为
+## Terminal Jump Behavior
 
-1. 尝试精确 TTY 匹配（Terminal/iTerm2）
-2. 回退到在 `cwd` 打开源应用
-3. 最终回退到终端选择器
+1. Try exact TTY match (Terminal/iTerm2)
+2. Fallback to opening source app at `cwd`
+3. Final fallback to terminal picker
 
-## 许可证
+## License
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 贡献
+## Contributing
 
-欢迎贡献！请阅读 [CONTRIBUTING.md](CONTRIBUTING.md) 了解指南。
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## 致谢
+## Acknowledgments
 
-- 使用 SwiftUI 和 AppKit 构建
-- 灵感来自 "Native & Retro" 设计哲学
-- 感谢所有贡献者
+- Built with SwiftUI and AppKit
+- Inspired by the "Native & Retro" design philosophy
+- Thanks to all contributors
