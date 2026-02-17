@@ -38,7 +38,7 @@ struct TwinTubMenuBarApp: App {
         self.eventBridge = bridge
 
         do {
-            let server = try LocalEventServer(port: 55771, eventHandler: { event in
+            let server = try LocalEventServer(port: TwinTubConfig.serverPort, eventHandler: { event in
                 bridge.enqueue(event)
             }, debugHandler: { [store] in
                 var lines: [String] = []
@@ -51,7 +51,7 @@ struct TwinTubMenuBarApp: App {
             server.start()
         } catch {
             self.server = nil
-            assertionFailure("TwinTub server failed to start on 55771: \(error)")
+            assertionFailure("TwinTub server failed to start on \(TwinTubConfig.serverPort): \(error)")
         }
     }
 
@@ -84,7 +84,7 @@ struct TwinTubMenuBarApp: App {
 private final class EventBridge: @unchecked Sendable {
     private let store: SessionStore
     private let queue = DispatchQueue(label: "twintub.event.bridge", qos: .userInitiated)
-    private let flushInterval: TimeInterval = 0.1
+    private let flushInterval: TimeInterval = TwinTubConfig.eventBridgeFlushInterval
     private var pendingBySession: [String: TwinTubEvent] = [:]
     private var pendingOrder: [String] = []
     private var flushScheduled = false

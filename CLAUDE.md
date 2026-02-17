@@ -22,12 +22,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Hooks Reference: https://code.claude.com/docs/en/hooks
 Automate with hooks: https://code.claude.com/docs/en/hooks-guide
 
-### Components
-
-1. **Hook Bridge** (`hooks/twintub_hook_bridge.sh`): Bash 脚本监听 Claude Code 生命周期事件，通过 HTTP POST 发送给 App
-2. **LocalEventServer**: 使用 Network.framework 的 TCP 服务器，监听端口 55771，接收 `/event` 和 `/health` 端点
-3. **SwiftUI Menu Bar App**: 接收事件并更新 UI，支持状态显示、会话列表、跳转功能
-
 ### Code Architecture (Redux-like Pattern)
 
 ```
@@ -41,7 +35,7 @@ TwinTubEvent ──▶ EventBridge ──▶ SessionStore ──▶ SwiftUI View
 ```
 
 核心文件：
-- `TwinTubApp/App/TwinTubApp.swift`: App 入口，初始化依赖，包含 `EventBridge`（事件合并/flush）
+- `TwinTubApp/App/TwinTubApp.swift`: App 入口，包含 `EventBridge`（事件合并/flush）、`AppDelegate`
 - `TwinTubApp/Core/Model/TwinTubEvent.swift`: 事件模型（来自 hooks）
 - `TwinTubApp/Core/Model/SessionModel.swift`: 会话状态模型（含 liveness 字段）
 - `TwinTubApp/Core/State/SessionReducer.swift`: 纯函数 reducer，处理事件逻辑
@@ -51,6 +45,7 @@ TwinTubEvent ──▶ EventBridge ──▶ SessionStore ──▶ SwiftUI View
 - `TwinTubApp/Core/Services/TerminalJumpService.swift`: 跳转到终端会话
 - `TwinTubApp/Core/Services/SessionLivenessMonitor.swift`: 会话存活监控（进程/TTY 验证）
 - `TwinTubApp/Core/Services/ProcessSnapshotProvider.swift`: 系统 ps 快照提供者
+- `TwinTubApp/Core/Services/HookConfigValidator.swift`: Hook 配置验证与自动修复
 
 ### Session Liveness (Dual-Source Truth)
 
@@ -98,7 +93,15 @@ Hook Bridge 额外字段：
 - `shell_pid`, `shell_ppid`: Shell 进程信息
 - `terminal_tty`, `terminal_session_id`, `terminal_window_id`, `terminal_pane_id`: 终端上下文
 
-## Key Hook Events for This Project
+### Event Bridge Coalescing
+
+`EventBridge` 执行事件合并逻辑：
+- 同一 session 的连续事件只保留最新
+- `SessionEnd` 优先级最高，始终覆盖其他事件
+- `Stop` 次之，覆盖非 `SessionEnd` 事件
+- 100ms flush 间隔，防止高频事件阻塞 UI
+
+## Key Hook Events
 
 ```json
 {
@@ -113,24 +116,21 @@ Hook Bridge 额外字段：
 }
 ```
 
-## UI/UX Specification
+## UI/UX
 
-请严格参考 `twintub.pen` 设计稿，包含：
+设计稿位于 `twintub.pen`。
 
-- **Dark Theme**: 背景 #1A1A1A，强调色琥珀橙 #FF9F0A / 终端绿 #32D74B
-- **Light Theme**: 背景 #F7F3E0，强调色国际橙 #FF453A / 墨绿 #004D40
+- **Dark Theme**: 背景 #050607，强调色琥珀橙 #FFB347 / 终端绿 #7CFC00
+- **Light Theme**: 背景 #F7F3E0，强调色国际橙 #D97706 / 墨绿 #059669
 - **Menu Bar Icon**: 胶囊形态，显示状态（Idle/Waiting/Processing/Done）
 - **Session Card**: 项目名、当前行为、10段式容量条、跳转按钮
 - **排序规则**: Waiting > Processing > Completed
 
-## Development Notes
-
-- 使用 SwiftUI `MenuBarExtra` 构建 Menu Bar 应用
-- 字体建议使用 Space Mono 或 SF Mono（单宽字体）
-- 状态机需处理乱序事件（如先收到 Stop 再收到 PermissionRequest）
-- `EventBridge` 执行事件合并：同一 session 的连续事件只保留最新，`SessionEnd`/`Stop` 优先级最高
-- Liveness 检查在后台队列执行，避免阻塞主线程
-- 通知策略：等待状态静默窗口 120 秒，升级窗口 180 秒
+UI 组件：
+- `TwinTubPanelView`: 主面板，包含 header、controls、session 列表
+- `SessionCardView`: 会话卡片
+- `PillStatusView`: Menu Bar 状态图标
+- `ThemeTokens`: 主题颜色/字体 token
 
 ## Common Commands
 
@@ -140,19 +140,15 @@ Hook Bridge 额外字段：
 ./scripts/run_twintub_app.sh
 ```
 
-构建并打包为 `.build/TwinTub.app`，然后启动（需要 mainBundle 路径）。
+构建并打包为 `dist/TwinTub.app`，然后启动。
 
-### Build
+### Build Only
 
 ```bash
-# App bundle (推荐)
 ./scripts/run_twintub_app.sh --no-run
 
-# xcodebuild
+# 或 xcodebuild
 xcodebuild -scheme TwinTub -destination 'platform=macOS' build
-
-# Swift Package
-swift build
 ```
 
 ### Test
@@ -161,11 +157,12 @@ swift build
 # All tests
 xcodebuild -scheme TwinTub -destination 'platform=macOS' test
 
-# Swift Package
+# 或 Swift Package
 swift test
 
-# 单个测试文件
+# 单个测试
 swift test --filter SessionLivenessMonitorTests
+swift test --filter SessionReducerTests
 ```
 
 ### Hook Management
@@ -205,3 +202,13 @@ curl -X POST http://127.0.0.1:55771/event \
 # 查看来源检测日志
 tail -f /tmp/twintub_source_debug.log
 ```
+
+## Development Notes
+
+- 使用 SwiftUI `MenuBarExtra` 构建 Menu Bar 应用
+- 字体使用 `Font.system(.monospaced)` 单宽字体
+- 状态机需处理乱序事件（如先收到 Stop 再收到 PermissionRequest）
+- Liveness 检查在后台队列 `twintub.liveness.queue` 执行，避免阻塞主线程
+- 通知策略：等待状态静默窗口 120 秒，升级窗口 180 秒
+- App 启动时自动验证 hooks 配置，如有问题尝试自动修复
+- 单例检查：`AppDelegate.applicationDidFinishLaunching` 中检查重复实例并退出

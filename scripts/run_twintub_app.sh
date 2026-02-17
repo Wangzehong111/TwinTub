@@ -7,9 +7,38 @@ APP_NAME="TwinTub"
 EXECUTABLE_NAME="TwinTubApp"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/${APP_NAME}.app"
-APP_ICON_SOURCE="/Users/wangzehong/Documents/icons/com.unofficial.smartisan.iconpack/bubei_tingshu.png"
+
+# Icon paths - check multiple locations
 APP_ICON_NAME="TwinTubIcon"
 APP_ICON_ICNS="$APP_BUNDLE/Contents/Resources/${APP_ICON_NAME}.icns"
+
+# Check for icon in order of preference
+ICON_SEARCH_PATHS=(
+    "$ROOT_DIR/TwinTubApp/Resources/Assets.xcassets/AppIcon.appiconset/icon_512x512@2x.png"
+    "$ROOT_DIR/TwinTubApp/Resources/Assets.xcassets/AppIcon.appiconset/icon_256x256@2x.png"
+    "$ROOT_DIR/TwinTubApp/Resources/TwinTubIcon.png"
+    "$ROOT_DIR/Resources/TwinTubIcon.png"
+)
+
+find_icon_source() {
+    for path in "${ICON_SEARCH_PATHS[@]}"; do
+        if [ -f "$path" ]; then
+            echo "$path"
+            return 0
+        fi
+    done
+    return 1
+}
+
+APP_ICON_SOURCE=""
+if find_icon_source >/dev/null 2>&1; then
+    APP_ICON_SOURCE=$(find_icon_source)
+fi
+
+# Get version from git or use default
+VERSION="$("$ROOT_DIR/scripts/version.sh" --version)"
+BUILD_NUMBER="$("$ROOT_DIR/scripts/version.sh" --build)"
+
 SHOULD_OPEN=1
 
 if [ "${1:-}" = "--no-run" ]; then
@@ -133,6 +162,8 @@ if [ -f "$ROOT_DIR/hooks/twintub_hook_bridge.sh" ]; then
   chmod +x "$HOME/.claude/hooks/twintub_hook_bridge.sh"
 fi
 
+echo "Building TwinTub v${VERSION} (${BUILD_NUMBER})..."
+
 xcodebuild \
   -scheme TwinTub \
   -destination 'platform=macOS' \
@@ -149,12 +180,17 @@ fi
 
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
-if [ -f "$APP_ICON_SOURCE" ]; then
+if [ -n "$APP_ICON_SOURCE" ] && [ -f "$APP_ICON_SOURCE" ]; then
   generate_icon_icns "$APP_ICON_SOURCE" "$APP_ICON_ICNS"
   # Also copy PNG for notification attachments
   cp "$APP_ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/TwinTubIcon.png"
+  echo "Using icon from: $APP_ICON_SOURCE"
 else
-  echo "Warning: app icon source not found, packaging without custom icon: $APP_ICON_SOURCE" >&2
+  echo "Warning: No app icon found. Searched locations:" >&2
+  for path in "${ICON_SEARCH_PATHS[@]}"; do
+    echo "  - $path" >&2
+  done
+  echo "Packaging without custom icon." >&2
 fi
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
@@ -177,9 +213,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>1.0</string>
+  <string>${VERSION}</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>${BUILD_NUMBER}</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>LSUIElement</key>
@@ -201,5 +237,7 @@ if [ "$SHOULD_OPEN" -eq 1 ]; then
   open "$APP_BUNDLE"
 fi
 
+echo ""
 echo "Packaged: $APP_BUNDLE"
+echo "Version: ${VERSION} (${BUILD_NUMBER})"
 echo "Health check: curl -i http://127.0.0.1:55771/health"

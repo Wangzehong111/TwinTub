@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  APP_NAME: TwinTub
+  EXECUTABLE_NAME: TwinTubApp
+
+jobs:
+  build-release:
+    name: Build Release
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          # Remove 'v' prefix if present
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+
+      - name: Build Release
+        run: |
+          xcodebuild \
+            -scheme TwinTub \
+            -destination 'platform=macOS' \
+            -configuration Release \
+            -derivedDataPath .build/xcode-derived \
+            build
+
+      - name: Package App
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          BUILD_NUMBER=$(git rev-list --count HEAD)
+
+          # Create app bundle structure
+          mkdir -p dist/${{ env.APP_NAME }}.app/Contents/MacOS
+          mkdir -p dist/${{ env.APP_NAME }}.app/Contents/Resources
+
+          # Copy binary
+          cp .build/xcode-derived/Build/Products/Release/${{ env.EXECUTABLE_NAME }} \
+             dist/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.EXECUTABLE_NAME }}
+          chmod +x dist/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.EXECUTABLE_NAME }}
+
+          # Create Info.plist
+          cat > dist/${{ env.APP_NAME }}.app/Contents/Info.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>${{ env.EXECUTABLE_NAME }}</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.twintub.app</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>${{ env.APP_NAME }}</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>${VERSION}</string>
+            <key>CFBundleVersion</key>
+            <string>${BUILD_NUMBER}</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>14.0</string>
+            <key>LSUIElement</key>
+            <true/>
+            <key>NSPrincipalClass</key>
+            <string>NSApplication</string>
+          </dict>
+          </plist>
+          PLIST
+
+          # Ad-hoc sign the bundle
+          codesign --force --deep -s - dist/${{ env.APP_NAME }}.app
+
+          echo "App packaged successfully"
+
+      - name: Create ZIP archive
+        run: |
+          cd dist
+          zip -r TwinTub-${{ steps.get_version.outputs.version }}.zip ${{ env.APP_NAME }}.app
+
+      - name: Calculate SHA256
+        id: sha256
+        run: |
+          cd dist
+          SHA256=$(shasum -a 256 TwinTub-${{ steps.get_version.outputs.version }}.zip | cut -d ' ' -f 1)
+          echo "sha256=$SHA256" >> $GITHUB_OUTPUT
+          echo "SHA256: $SHA256"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: TwinTub ${{ steps.get_version.outputs.version }}
+          body: |
+            ## TwinTub ${{ steps.get_version.outputs.version }}
+
+            ### Installation
+
+            1. Download `TwinTub-${{ steps.get_version.outputs.version }}.zip`
+            2. Extract and move `TwinTub.app` to `/Applications`
+            3. Right-click → Open on first launch (required for unsigned apps)
+
+            ### Homebrew
+
+            ```bash
+            brew tap twintub/tap
+            brew install twintub
+            ```
+
+            ### SHA256 Checksum
+            ```
+            ${{ steps.sha256.outputs.sha256 }}  TwinTub-${{ steps.get_version.outputs.version }}.zip
+            ```
+
+            ### What's Changed
+            See [CHANGELOG.md](./CHANGELOG.md) for details.
+          files: |
+            dist/TwinTub-${{ steps.get_version.outputs.version }}.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TwinTub-${{ steps.get_version.outputs.version }}
+          path: dist/TwinTub-${{ steps.get_version.outputs.version }}.zip
+          retention-days: 30

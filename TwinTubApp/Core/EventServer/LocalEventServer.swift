@@ -8,7 +8,7 @@ public final class LocalEventServer: @unchecked Sendable {
 
     private let debugHandler: (@Sendable () -> String)?
 
-    public init(port: UInt16 = 55771, eventHandler: @escaping @Sendable (TwinTubEvent) -> Void, debugHandler: (@Sendable () -> String)? = nil) throws {
+    public init(port: UInt16 = TwinTubConfig.defaultServerPort, eventHandler: @escaping @Sendable (TwinTubEvent) -> Void, debugHandler: (@Sendable () -> String)? = nil) throws {
         guard         let nwPort = NWEndpoint.Port(rawValue: port) else {
             throw ServerError.invalidPort
         }

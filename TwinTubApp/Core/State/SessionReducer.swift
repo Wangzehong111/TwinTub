@@ -22,9 +22,9 @@ public struct SessionReducer {
         current: SessionModel?,
         event: TwinTubEvent,
         now: Date,
-        terminatedHistoryRetention: TimeInterval = 300,
-        notifySilenceWindow: TimeInterval = 120,
-        notifyEscalationWindow: TimeInterval = 180
+        terminatedHistoryRetention: TimeInterval = TwinTubConfig.terminatedHistoryRetention,
+        notifySilenceWindow: TimeInterval = TwinTubConfig.notifySilenceWindow,
+        notifyEscalationWindow: TimeInterval = TwinTubConfig.notifyEscalationWindow
     ) -> Mutation {
         if event.event == .sessionEnd {
             guard var model = current else {
@@ -138,7 +138,7 @@ public struct SessionReducer {
                 }
                 model.usageSegments = SessionModel.segmentsForTokens(usageTokens, maxContextTokens: model.maxContextTokens)
                 // 为了向后兼容，也更新 usageBytes（如果需要）
-                model.usageBytes = usageTokens * 4
+                model.usageBytes = usageTokens * TwinTubConfig.tokenToBytesRatio
             } else if let usageBytes = event.usageBytes, usageBytes >= 0 {
                 // 回退到 bytes 计算（向后兼容）
                 model.usageBytes = usageBytes
@@ -230,6 +230,6 @@ public struct SessionReducer {
     private static func inferStatusReason(from prompt: String) -> String {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "PROCESSING" }
-        return String(trimmed.prefix(24)).replacingOccurrences(of: " ", with: "_").uppercased()
+        return String(trimmed.prefix(TwinTubConfig.statusReasonMaxLength)).replacingOccurrences(of: " ", with: "_").uppercased()
     }
 }

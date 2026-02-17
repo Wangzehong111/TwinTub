@@ -7,9 +7,9 @@ public final class SessionLivenessMonitor: @unchecked Sendable {
         public let hardExpiry: TimeInterval
 
         public init(
-            offlineGracePeriod: TimeInterval = 20,
-            terminatedHistoryRetention: TimeInterval = 300,
-            hardExpiry: TimeInterval = 1800
+            offlineGracePeriod: TimeInterval = TwinTubConfig.offlineGracePeriod,
+            terminatedHistoryRetention: TimeInterval = TwinTubConfig.terminatedHistoryRetention,
+            hardExpiry: TimeInterval = TwinTubConfig.hardExpiry
         ) {
             self.offlineGracePeriod = offlineGracePeriod
             self.terminatedHistoryRetention = terminatedHistoryRetention

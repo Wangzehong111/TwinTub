@@ -33,8 +33,8 @@ public final class SessionStore: ObservableObject {
         livenessMonitor: SessionLivenessMonitor = SessionLivenessMonitor(),
         sourceResolver: SourceResolver? = nil,
         clock: @escaping () -> Date = Date.init,
-        throttleInterval: TimeInterval = 0.5,
-        livenessCheckInterval: TimeInterval = 5
+        throttleInterval: TimeInterval = TwinTubConfig.sessionStoreThrottleInterval,
+        livenessCheckInterval: TimeInterval = TwinTubConfig.livenessCheckInterval
     ) {
         self.notificationService = notificationService
         self.livenessMonitor = livenessMonitor
@@ -102,7 +102,7 @@ public final class SessionStore: ObservableObject {
                 backfillSourceIfNeeded(&finalModel)
                 sessionMap[finalModel.id] = finalModel
                 if event.event == .stop {
-                    doneVisibleUntil = now.addingTimeInterval(5)
+                    doneVisibleUntil = now.addingTimeInterval(TwinTubConfig.doneVisibleDuration)
                 }
 
             case let .remove(sessionID):

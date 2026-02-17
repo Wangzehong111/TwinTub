@@ -94,7 +94,7 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
     public var maxContextBytes: Int
 
     // 固定的上下文窗口大小（200K tokens，自动压缩阈值 95%）
-    public static let defaultMaxContextTokens = 200_000
+    public static let defaultMaxContextTokens = TwinTubConfig.defaultMaxContextTokens
 
     public init(
         id: String,
@@ -128,7 +128,7 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         cleanupDeadline: Date? = nil,
         terminationReason: SessionTerminationReason? = nil,
         sourceFingerprint: String? = nil,
-        maxContextBytes: Int = 800_000
+        maxContextBytes: Int = TwinTubConfig.defaultMaxContextBytes
     ) {
         self.id = id
         self.projectName = projectName
@@ -178,7 +178,7 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
     }
 
     // 200K tokens ≈ 800,000 bytes (1 token ≈ 4 chars) - 保留用于向后兼容
-    public static func segments(for usageBytes: Int, maxContextBytes: Int = 800_000) -> Int {
+    public static func segments(for usageBytes: Int, maxContextBytes: Int = TwinTubConfig.defaultMaxContextBytes) -> Int {
         guard usageBytes > 0 else { return 0 }
         let ratio = min(Double(usageBytes) / Double(maxContextBytes), 1.0)
         return min(10, max(1, Int(ceil(ratio * 10))))
