@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @main
 struct BeaconMenuBarApp: App {
@@ -7,6 +8,7 @@ struct BeaconMenuBarApp: App {
     private let jumpService: TerminalJumpService
     private let server: LocalEventServer?
     private let eventBridge: EventBridge
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
         let notification = NotificationService()
@@ -17,6 +19,20 @@ struct BeaconMenuBarApp: App {
             notificationService: notification,
             sourceResolver: { pid in jump.resolveSourceFromPID(pid) }
         )
+
+        // Set up notification click handler to jump to terminal session (after store is created)
+        notification.onNotificationClick = { [store, jump] sessionID in
+            // Prevent App from activating when notification is clicked
+            DispatchQueue.main.async {
+                if let session = store.sessions.first(where: { $0.id == sessionID }) {
+                    let outcome = jump.jump(to: session)
+                    NSLog("[Beacon] Notification click jump outcome: \(outcome)")
+                } else {
+                    NSLog("[Beacon] Notification clicked but session not found: \(sessionID)")
+                }
+            }
+        }
+
         _store = StateObject(wrappedValue: store)
         let bridge = EventBridge(store: store)
         self.eventBridge = bridge
@@ -143,13 +159,56 @@ private final class EventBridge: @unchecked Sendable {
     private func coalesce(previous: BeaconEvent?, incoming: BeaconEvent) -> BeaconEvent {
         guard let previous else { return incoming }
 
-        // Keep terminal transitions deterministic even under event bursts.
-        if previous.event == .sessionEnd || previous.event == .stop {
-            return previous
-        }
-        if incoming.event == .sessionEnd || incoming.event == .stop {
-            return incoming
-        }
+        // SessionEnd is the final lifecycle event — always takes precedence.
+        if incoming.event == .sessionEnd { return incoming }
+        if previous.event == .sessionEnd { return previous }
+
+        // Stop beats non-terminal events but not SessionEnd.
+        if previous.event == .stop { return previous }
+        if incoming.event == .stop { return incoming }
+
         return incoming
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Ensure the app stays as agent (menu bar app)
+        NSApp.setActivationPolicy(.accessory)
+
+        // Validate hooks configuration on startup
+        validateHooksConfiguration()
+    }
+
+    private func validateHooksConfiguration() {
+        DispatchQueue.global(qos: .utility).async {
+            let result = HookConfigValidator.validate()
+
+            if result.hasIssues {
+                NSLog("[Beacon] Hook configuration issue detected: \(result.summary)")
+
+                // Attempt auto-fix
+                if HookConfigValidator.autoFix() {
+                    NSLog("[Beacon] Hooks configuration auto-fixed successfully")
+                } else {
+                    NSLog("[Beacon] Failed to auto-fix hooks configuration. Manual intervention required.")
+                    // Could show a notification to user here if desired
+                }
+            } else {
+                NSLog("[Beacon] Hooks configuration validated: \(result.summary)")
+            }
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Do not show dock icon when notification is clicked
+        return false
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        // Prevent the app from activating fully
+        DispatchQueue.main.async {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 }

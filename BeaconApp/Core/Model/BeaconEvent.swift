@@ -69,6 +69,7 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
     public let terminalPaneID: String?
     public let heartbeatID: String?
     public let eventSeq: Int?
+    public let maxContextBytes: Int?
 
     enum CodingKeys: String, CodingKey {
         case event
@@ -93,6 +94,7 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
         case terminalPaneID = "terminal_pane_id"
         case heartbeatID = "heartbeat_id"
         case eventSeq = "event_seq"
+        case maxContextBytes = "max_context_bytes"
     }
 
     public init(
@@ -117,7 +119,8 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
         terminalWindowID: String? = nil,
         terminalPaneID: String? = nil,
         heartbeatID: String? = nil,
-        eventSeq: Int? = nil
+        eventSeq: Int? = nil,
+        maxContextBytes: Int? = nil
     ) {
         self.event = event
         self.sessionID = sessionID
@@ -141,6 +144,7 @@ public struct BeaconEvent: Codable, Equatable, Sendable {
         self.terminalPaneID = terminalPaneID
         self.heartbeatID = heartbeatID
         self.eventSeq = eventSeq
+        self.maxContextBytes = maxContextBytes
     }
 }
 

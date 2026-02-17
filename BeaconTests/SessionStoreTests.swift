@@ -110,16 +110,16 @@ final class SessionStoreTests: XCTestCase {
             entriesByPID: [111: .init(pid: 111, ppid: 1, tty: "/dev/ttys001")],
             pidsByTTY: ["/dev/ttys001": [111]]
         )
-        store.reconcileLiveness(now: clockBox.now)
+        store.reconcileLivenessSync(now: clockBox.now)
         XCTAssertTrue(store.sessions.contains(where: { $0.id == "s-live" }))
 
         snapshotProvider.snapshotValue = ProcessSnapshot(entriesByPID: [:], pidsByTTY: [:])
         clockBox.now = clockBox.now.addingTimeInterval(10)
-        store.reconcileLiveness(now: clockBox.now)
+        store.reconcileLivenessSync(now: clockBox.now)
         XCTAssertTrue(store.sessions.contains(where: { $0.id == "s-live" }))
 
         clockBox.now = clockBox.now.addingTimeInterval(21)
-        store.reconcileLiveness(now: clockBox.now)
+        store.reconcileLivenessSync(now: clockBox.now)
         XCTAssertFalse(store.sessions.contains(where: { $0.id == "s-live" }))
     }
 
@@ -133,20 +133,47 @@ final class SessionStoreTests: XCTestCase {
             entriesByPID: [222: .init(pid: 222, ppid: 1, tty: "/dev/ttys002")],
             pidsByTTY: ["/dev/ttys002": [222]]
         )
-        store.reconcileLiveness(now: clockBox.now)
+        store.reconcileLivenessSync(now: clockBox.now)
 
         snapshotProvider.snapshotValue = ProcessSnapshot(entriesByPID: [:], pidsByTTY: [:])
         clockBox.now = clockBox.now.addingTimeInterval(10)
-        store.reconcileLiveness(now: clockBox.now)
+        store.reconcileLivenessSync(now: clockBox.now)
 
         snapshotProvider.snapshotValue = ProcessSnapshot(
             entriesByPID: [222: .init(pid: 222, ppid: 1, tty: "/dev/ttys002")],
             pidsByTTY: ["/dev/ttys002": [222]]
         )
         clockBox.now = clockBox.now.addingTimeInterval(5)
-        store.reconcileLiveness(now: clockBox.now)
+        store.reconcileLivenessSync(now: clockBox.now)
 
         XCTAssertTrue(store.sessions.contains(where: { $0.id == "s-recover" }))
+    }
+
+    func testSessionEndAfterStopTriggersTerminatedNotification() {
+        let notifications = TestNotificationService()
+        let clockBox = ClockBox(now: Date())
+        let monitor = SessionLivenessMonitor(
+            processSnapshotProvider: StubProcessSnapshotProvider(),
+            config: .init(offlineGracePeriod: 20, terminatedHistoryRetention: 300, hardExpiry: 1800)
+        )
+        let store = SessionStore(
+            notificationService: notifications,
+            livenessMonitor: monitor,
+            clock: { clockBox.now },
+            throttleInterval: 0,
+            livenessCheckInterval: 0
+        )
+
+        store.handle(event: BeaconEvent(event: .userPromptSubmit, sessionID: "s-term"))
+        // Stop followed immediately by SessionEnd (simulates typical Claude Code lifecycle)
+        store.handle(events: [
+            BeaconEvent(event: .stop, sessionID: "s-term"),
+            BeaconEvent(event: .sessionEnd, sessionID: "s-term")
+        ])
+
+        XCTAssertEqual(notifications.terminatedRecords.count, 1)
+        XCTAssertEqual(notifications.terminatedRecords.first?.sessionID, "s-term")
+        XCTAssertEqual(notifications.terminatedRecords.first?.reason, .sessionEndEvent)
     }
 
     func testTerminatedSessionsPurgedAfterRetention() {
@@ -171,7 +198,7 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertNotNil(store.session(id: "s-end"))
 
         clockBox.now = clockBox.now.addingTimeInterval(6)
-        store.reconcileLiveness(now: clockBox.now)
+        store.reconcileLivenessSync(now: clockBox.now)
         XCTAssertNil(store.session(id: "s-end"))
     }
 }

@@ -7,8 +7,14 @@ final class TestNotificationService: NotificationDispatching {
         let escalated: Bool
     }
 
+    struct TerminatedRecord: Equatable {
+        let sessionID: String
+        let reason: SessionTerminationReason
+    }
+
     private(set) var waitingRecords: [WaitingRecord] = []
     private(set) var completedRecords: [String] = []
+    private(set) var terminatedRecords: [TerminatedRecord] = []
 
     func requestAuthorizationIfNeeded() {}
 
@@ -18,5 +24,9 @@ final class TestNotificationService: NotificationDispatching {
 
     func postCompleted(session: SessionModel) {
         completedRecords.append(session.id)
+    }
+
+    func postTerminated(session: SessionModel, reason: SessionTerminationReason) {
+        terminatedRecords.append(.init(sessionID: session.id, reason: reason))
     }
 }

@@ -11,25 +11,49 @@ struct PillStatusView: View {
         return false
     }
 
+    private var waitingCount: Int {
+        if case .waiting(let count) = status { return count }
+        return 0
+    }
+
     var body: some View {
-        Image(nsImage: statusImage)
-            .renderingMode(.original)
-            .interpolation(.high)
-            .antialiased(true)
-            .frame(width: 18, height: 18)
-            .contentShape(Rectangle())
-            .accessibilityLabel(accessibilityStatus)
-            .task(id: isProcessing) {
-                guard isProcessing else {
-                    spinStep = 0
-                    return
+        ZStack(alignment: .topTrailing) {
+            Image(nsImage: statusImage)
+                .renderingMode(.original)
+                .interpolation(.high)
+                .antialiased(true)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+                .accessibilityLabel(accessibilityStatus)
+                .task(id: isProcessing) {
+                    guard isProcessing else {
+                        spinStep = 0
+                        return
+                    }
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .milliseconds(100))
+                        guard !Task.isCancelled else { break }
+                        spinStep = (spinStep + 1) % 30
+                    }
                 }
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(100))
-                    guard !Task.isCancelled else { break }
-                    spinStep = (spinStep + 1) % 30
-                }
+
+            if waitingCount > 1 {
+                waitingBadge
             }
+        }
+    }
+
+    private var waitingBadge: some View {
+        Text("\(waitingCount)")
+            .font(.system(size: 8, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 2.5)
+            .padding(.vertical, 1)
+            .background(
+                Capsule()
+                    .fill(Color.red)
+            )
+            .offset(x: 4, y: -4)
     }
 
     private var statusImage: NSImage {
@@ -48,7 +72,10 @@ struct PillStatusView: View {
             return "Beacon Idle"
         case .processing:
             return "Beacon Processing"
-        case .waiting:
+        case .waiting(let count):
+            if count > 1 {
+                return "Beacon Waiting for Input (\(count) sessions)"
+            }
             return "Beacon Waiting for Input"
         case .done:
             return "Beacon Done"

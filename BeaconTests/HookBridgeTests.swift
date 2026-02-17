@@ -168,6 +168,49 @@ final class HookBridgeTests: XCTestCase {
         XCTAssertEqual(event?.sourceConfidence, .high)
     }
 
+    @MainActor
+    func testHookBridgeMapsNestedNotificationType() async throws {
+        let exp = expectation(description: "hook forwarded nested notification type")
+        let captured = EventBox()
+        let port = try freeLocalPort()
+
+        let server = try LocalEventServer(port: port) { event in
+            captured.set(event)
+            exp.fulfill()
+        }
+        server.start()
+        defer { server.stop() }
+
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let scriptPath = try bridgePath()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/bash")
+        process.arguments = [scriptPath]
+        process.environment = ["BEACON_PORT": String(port)]
+
+        let stdin = Pipe()
+        let stderr = Pipe()
+        process.standardInput = stdin
+        process.standardError = stderr
+
+        try process.run()
+        let input = "{\"event\":\"Notification\",\"session_id\":\"s-nested\",\"notification\":{\"type\":\"permission_request\",\"message\":\"approve\"}}"
+        stdin.fileHandleForWriting.write(Data(input.utf8))
+        stdin.fileHandleForWriting.closeFile()
+        process.waitUntilExit()
+
+        XCTAssertEqual(process.terminationStatus, 0)
+        XCTAssertEqual(String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8), "")
+
+        await fulfillment(of: [exp], timeout: 2.0)
+        let event = captured.get()
+        XCTAssertEqual(event?.event, .notification)
+        XCTAssertEqual(event?.sessionID, "s-nested")
+        XCTAssertEqual(event?.notificationType, "permission_request")
+        XCTAssertEqual(event?.message, "approve")
+    }
+
     func testHookBridgeSilentFailureWhenAppOffline() throws {
         let scriptPath = try bridgePath()
         let process = Process()

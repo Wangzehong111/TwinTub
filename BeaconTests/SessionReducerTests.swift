@@ -13,7 +13,11 @@ final class SessionReducerTests: XCTestCase {
         }
         XCTAssertEqual(processingModel.status, .processing)
 
-        let usage = BeaconEvent(event: .postToolUse, sessionID: "s1", usageBytes: 950_000)
+        let usage = BeaconEvent(
+            event: .postToolUse,
+            sessionID: "s1",
+            usageBytes: 760_000 // 95% of 800,000 default -> 10 segments
+        )
         let processing2 = SessionReducer.reduce(current: processingModel, event: usage, now: now)
         guard case let .upsert(usageModel, _) = processing2 else {
             return XCTFail("Expected upsert for PostToolUse")
@@ -66,13 +70,105 @@ final class SessionReducerTests: XCTestCase {
     }
 
     func testUsageSegmentsBoundaries() {
+        // 默认 800,000 bytes 作为 100%
         XCTAssertEqual(SessionModel.segments(for: 0), 0)
         XCTAssertEqual(SessionModel.segments(for: 1), 1)
-        XCTAssertEqual(SessionModel.segments(for: 500_000), 5)
-        XCTAssertEqual(SessionModel.segments(for: 600_000), 6)
-        XCTAssertEqual(SessionModel.segments(for: 800_000), 8)
-        XCTAssertEqual(SessionModel.segments(for: 900_000), 9)
-        XCTAssertEqual(SessionModel.segments(for: 1_000_000), 10)
+        XCTAssertEqual(SessionModel.segments(for: 400_000), 5)  // 50%
+        XCTAssertEqual(SessionModel.segments(for: 480_000), 6)  // 60%
+        XCTAssertEqual(SessionModel.segments(for: 640_000), 8)  // 80%
+        XCTAssertEqual(SessionModel.segments(for: 720_000), 9)  // 90%
+        XCTAssertEqual(SessionModel.segments(for: 800_000), 10) // 100%
+    }
+
+    func testUsageSegmentsWithDynamicMaxContextBytes() {
+        // 测试动态 maxContextBytes
+        XCTAssertEqual(SessionModel.segments(for: 400_000, maxContextBytes: 800_000), 5)  // 50%
+        XCTAssertEqual(SessionModel.segments(for: 400_000, maxContextBytes: 1_000_000), 4) // 40%
+        XCTAssertEqual(SessionModel.segments(for: 500_000, maxContextBytes: 1_000_000), 5) // 50%
+        XCTAssertEqual(SessionModel.segments(for: 800_000, maxContextBytes: 1_000_000), 8) // 80%
+    }
+
+    func testPostToolUseWithDynamicMaxContextBytes() {
+        let now = Date()
+        let base = BeaconEvent(event: .userPromptSubmit, sessionID: "s1", cwd: "/tmp/a", prompt: "run")
+        let processing = SessionReducer.reduce(current: nil, event: base, now: now)
+
+        guard case let .upsert(processingModel, _) = processing else {
+            return XCTFail("Expected upsert for UserPromptSubmit")
+        }
+
+        // 发送带动态 maxContextBytes 的 PostToolUse
+        let usage = BeaconEvent(
+            event: .postToolUse,
+            sessionID: "s1",
+            usageBytes: 400_000,
+            maxContextBytes: 800_000
+        )
+        let result = SessionReducer.reduce(current: processingModel, event: usage, now: now)
+        guard case let .upsert(usageModel, _) = result else {
+            return XCTFail("Expected upsert for PostToolUse")
+        }
+        XCTAssertEqual(usageModel.usageBytes, 400_000)
+        XCTAssertEqual(usageModel.maxContextBytes, 800_000)
+        XCTAssertEqual(usageModel.usageSegments, 5) // 50%
+
+        // 再次发送，不带 maxContextBytes，应该保持之前的值
+        let usage2 = BeaconEvent(
+            event: .postToolUse,
+            sessionID: "s1",
+            usageBytes: 640_000
+        )
+        let result2 = SessionReducer.reduce(current: usageModel, event: usage2, now: now)
+        guard case let .upsert(usageModel2, _) = result2 else {
+            return XCTFail("Expected upsert for second PostToolUse")
+        }
+        XCTAssertEqual(usageModel2.usageBytes, 640_000)
+        XCTAssertEqual(usageModel2.maxContextBytes, 800_000) // 保持之前的值
+        XCTAssertEqual(usageModel2.usageSegments, 8) // 80% 基于 800,000
+
+        // 发送新的 maxContextBytes
+        let usage3 = BeaconEvent(
+            event: .postToolUse,
+            sessionID: "s1",
+            usageBytes: 500_000,
+            maxContextBytes: 1_000_000
+        )
+        let result3 = SessionReducer.reduce(current: usageModel2, event: usage3, now: now)
+        guard case let .upsert(usageModel3, _) = result3 else {
+            return XCTFail("Expected upsert for third PostToolUse")
+        }
+        XCTAssertEqual(usageModel3.usageBytes, 500_000)
+        XCTAssertEqual(usageModel3.maxContextBytes, 1_000_000) // 更新为新值
+        XCTAssertEqual(usageModel3.usageSegments, 5) // 50% 基于 1,000,000
+    }
+
+    func testNotificationEventPermissionRequestAliasEntersWaiting() {
+        let now = Date()
+        let current = SessionModel(
+            id: "s-notif",
+            projectName: "Beacon",
+            cwd: nil,
+            status: .processing,
+            statusReason: nil,
+            usageBytes: 0,
+            usageSegments: 0,
+            updatedAt: now
+        )
+
+        let event = BeaconEvent(
+            event: .notification,
+            sessionID: "s-notif",
+            message: "approve tool call",
+            notificationType: "permission-request"
+        )
+        let mutation = SessionReducer.reduce(current: current, event: event, now: now)
+
+        guard case let .upsert(model, decision?) = mutation else {
+            return XCTFail("Expected waiting upsert with decision")
+        }
+        XCTAssertEqual(model.status, .waiting)
+        XCTAssertEqual(model.statusReason, "approve tool call")
+        XCTAssertEqual(decision.kind, .waiting(escalated: false))
     }
 
     func testSourceFieldsPropagateAndOverride() {

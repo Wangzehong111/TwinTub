@@ -127,11 +127,40 @@ public final class SessionStore: ObservableObject {
             let reconciled = monitor.reconcile(sessionMap: snapshot, now: now)
             Task { @MainActor [weak self] in
                 guard let self, self.livenessRevision == revision else { return }
-                self.sessionMap = reconciled
-                self.pruneExpiredProcessingSessions(now: now)
-                self.publishSessions(now: now)
+                self.applyLivenessReconciliation(snapshot: snapshot, reconciled: reconciled, now: now)
             }
         }
+    }
+
+    /// Synchronous version for testing purposes
+    public func reconcileLivenessSync(now: Date = Date()) {
+        let snapshot = sessionMap
+        let reconciled = livenessMonitor.reconcile(sessionMap: snapshot, now: now)
+        applyLivenessReconciliation(snapshot: snapshot, reconciled: reconciled, now: now)
+    }
+
+    private func applyLivenessReconciliation(
+        snapshot: [String: SessionModel],
+        reconciled: [String: SessionModel],
+        now: Date
+    ) {
+        // Detect newly terminated sessions and send notifications
+        for (sessionID, nextModel) in reconciled {
+            if let prevModel = snapshot[sessionID],
+               prevModel.livenessState != .terminated,
+               nextModel.livenessState == .terminated,
+               let reason = nextModel.terminationReason {
+                let decision = SessionReducer.NotificationDecision(
+                    kind: .terminated(reason: reason),
+                    session: nextModel
+                )
+                handle(notificationDecision: decision)
+            }
+        }
+
+        sessionMap = reconciled
+        pruneExpiredProcessingSessions(now: now)
+        publishSessions(now: now)
     }
 
     public func pruneExpiredProcessingSessions(now: Date = Date()) {
@@ -190,6 +219,8 @@ public final class SessionStore: ObservableObject {
             notificationService.postWaiting(session: notificationDecision.session, escalated: escalated)
         case .completed:
             notificationService.postCompleted(session: notificationDecision.session)
+        case let .terminated(reason):
+            notificationService.postTerminated(session: notificationDecision.session, reason: reason)
         }
     }
 

@@ -42,6 +42,21 @@ public enum SessionTerminationReason: String, Codable, CaseIterable, Sendable {
     case ttyMissing
     case heartbeatTimeout
     case manual
+
+    public var displayName: String {
+        switch self {
+        case .sessionEndEvent:
+            return "Session ended normally"
+        case .processMissing:
+            return "Process not found"
+        case .ttyMissing:
+            return "Terminal disconnected"
+        case .heartbeatTimeout:
+            return "Session timed out"
+        case .manual:
+            return "Manually terminated"
+        }
+    }
 }
 
 public struct SessionModel: Identifiable, Equatable, Sendable {
@@ -73,6 +88,7 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
     public var cleanupDeadline: Date?
     public var terminationReason: SessionTerminationReason?
     public var sourceFingerprint: String?
+    public var maxContextBytes: Int
 
     public init(
         id: String,
@@ -102,7 +118,8 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         offlineMarkedAt: Date? = nil,
         cleanupDeadline: Date? = nil,
         terminationReason: SessionTerminationReason? = nil,
-        sourceFingerprint: String? = nil
+        sourceFingerprint: String? = nil,
+        maxContextBytes: Int = 800_000
     ) {
         self.id = id
         self.projectName = projectName
@@ -132,6 +149,7 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         self.cleanupDeadline = cleanupDeadline
         self.terminationReason = terminationReason
         self.sourceFingerprint = sourceFingerprint
+        self.maxContextBytes = maxContextBytes
     }
 
     public var displayStatusLine: String {
@@ -147,7 +165,8 @@ public struct SessionModel: Identifiable, Equatable, Sendable {
         }
     }
 
-    public static func segments(for usageBytes: Int, maxContextBytes: Int = 1_000_000) -> Int {
+    // 200K tokens ≈ 800,000 bytes (1 token ≈ 4 chars)
+    public static func segments(for usageBytes: Int, maxContextBytes: Int = 800_000) -> Int {
         guard usageBytes > 0 else { return 0 }
         let ratio = min(Double(usageBytes) / Double(maxContextBytes), 1.0)
         return min(10, max(1, Int(ceil(ratio * 10))))

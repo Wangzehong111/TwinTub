@@ -31,20 +31,54 @@ Automate with hooks: https://code.claude.com/docs/en/hooks-guide
 ### Code Architecture (Redux-like Pattern)
 
 ```
-BeaconEvent ──▶ SessionReducer ──▶ Mutation ──▶ SessionStore ──▶ SwiftUI Views
-                                    │
-                                    └─▶ NotificationDecision ──▶ NotificationService
+BeaconEvent ──▶ EventBridge ──▶ SessionStore ──▶ SwiftUI Views
+                    │                │
+                    │                ├─▶ SessionReducer (pure)
+                    │                ├─▶ SessionLivenessMonitor
+                    │                └─▶ NotificationService
+                    │
+                    └─▶ Coalesce by session, 100ms flush
 ```
 
 核心文件：
-- `BeaconApp/App/BeaconApp.swift`: App 入口，初始化依赖
+- `BeaconApp/App/BeaconApp.swift`: App 入口，初始化依赖，包含 `EventBridge`（事件合并/flush）
 - `BeaconApp/Core/Model/BeaconEvent.swift`: 事件模型（来自 hooks）
-- `BeaconApp/Core/Model/SessionModel.swift`: 会话状态模型
+- `BeaconApp/Core/Model/SessionModel.swift`: 会话状态模型（含 liveness 字段）
 - `BeaconApp/Core/State/SessionReducer.swift`: 纯函数 reducer，处理事件逻辑
-- `BeaconApp/Core/Store/SessionStore.swift`: 状态管理，Combine throttle 500ms
+- `BeaconApp/Core/Store/SessionStore.swift`: 状态管理，Combine throttle 500ms，后台 liveness 检查
 - `BeaconApp/Core/EventServer/LocalEventServer.swift`: HTTP 服务器（端口 55771）
 - `BeaconApp/Core/Services/NotificationService.swift`: 系统通知
 - `BeaconApp/Core/Services/TerminalJumpService.swift`: 跳转到终端会话
+- `BeaconApp/Core/Services/SessionLivenessMonitor.swift`: 会话存活监控（进程/TTY 验证）
+- `BeaconApp/Core/Services/ProcessSnapshotProvider.swift`: 系统 ps 快照提供者
+
+### Session Liveness (Dual-Source Truth)
+
+会话存活状态由两种来源共同决定：
+
+1. **Hook Events**: 驱动会话创建和状态更新
+2. **Liveness Monitor**: 每 5 秒通过 `ps` 快照验证进程/TTY 存活
+
+Liveness 状态流转：
+```
+alive → suspectOffline (首次检测不到) → offline (超过 grace period) → terminated
+```
+
+配置参数（`SessionLivenessMonitor.Config`）：
+- `offlineGracePeriod`: 20 秒（防止终端抖动误杀）
+- `terminatedHistoryRetention`: 300 秒（已终止会话保留时间）
+- `hardExpiry`: 1800 秒（无心跳强制过期）
+
+### Terminal Jump Behavior
+
+点击 Jump 按钮的跳转策略：
+1. 优先通过 TTY 精确匹配原始终端 Tab（Terminal/iTerm2 支持）
+2. 回退到打开源 App 并 `cd cwd`
+3. 最终回退到显示终端选择器
+
+支持的终端（自动检测 + 手动选择）：
+- Terminals: `Terminal.app`, `iTerm2`, `Warp`, `Ghostty`, `WezTerm`, `Kitty`, `Alacritty`, `Tabby`, `Hyper`, `Rio`, `Kaku`
+- IDE terminals: `Cursor`, `VS Code`, `Zed`
 
 ### Communication Protocol
 
@@ -58,6 +92,11 @@ BeaconEvent ──▶ SessionReducer ──▶ Mutation ──▶ SessionStore �
   - `Notification` → `waiting` (permission_prompt/idle_prompt)
   - `Stop` → `completed`
   - `SessionEnd` → `destroyed` (从列表中移除)
+
+Hook Bridge 额外字段：
+- `source_app`, `source_bundle_id`, `source_pid`, `source_confidence`: 来源终端检测
+- `shell_pid`, `shell_ppid`: Shell 进程信息
+- `terminal_tty`, `terminal_session_id`, `terminal_window_id`, `terminal_pane_id`: 终端上下文
 
 ## Key Hook Events for This Project
 
@@ -89,8 +128,8 @@ BeaconEvent ──▶ SessionReducer ──▶ Mutation ──▶ SessionStore �
 - 使用 SwiftUI `MenuBarExtra` 构建 Menu Bar 应用
 - 字体建议使用 Space Mono 或 SF Mono（单宽字体）
 - 状态机需处理乱序事件（如先收到 Stop 再收到 PermissionRequest）
-- TTL 机制：超过 30 分钟无更新的 Processing 会话视为僵尸会话
-- 使用 Combine 的 `throttle` 限制 UI 刷新频率（500ms）
+- `EventBridge` 执行事件合并：同一 session 的连续事件只保留最新，`SessionEnd`/`Stop` 优先级最高
+- Liveness 检查在后台队列执行，避免阻塞主线程
 - 通知策略：等待状态静默窗口 120 秒，升级窗口 180 秒
 
 ## Common Commands
@@ -101,18 +140,18 @@ BeaconEvent ──▶ SessionReducer ──▶ Mutation ──▶ SessionStore �
 ./scripts/run_beacon_app.sh
 ```
 
-构建 `Beacon`，打包为 `.build/Beacon.app` 并启动。
+构建并打包为 `.build/Beacon.app`，然后启动（需要 mainBundle 路径）。
 
 ### Build
 
 ```bash
-# Using script (app bundle)
+# App bundle (推荐)
 ./scripts/run_beacon_app.sh --no-run
 
-# Using xcodebuild
+# xcodebuild
 xcodebuild -scheme Beacon -destination 'platform=macOS' build
 
-# Using swift package
+# Swift Package
 swift build
 ```
 
@@ -122,8 +161,11 @@ swift build
 # All tests
 xcodebuild -scheme Beacon -destination 'platform=macOS' test
 
-# Swift Package tests
+# Swift Package
 swift test
+
+# 单个测试文件
+swift test --filter SessionLivenessMonitorTests
 ```
 
 ### Hook Management
@@ -155,4 +197,11 @@ curl -i http://127.0.0.1:55771/health
 curl -X POST http://127.0.0.1:55771/event \
   -H "Content-Type: application/json" \
   -d '{"event":"UserPromptSubmit","session_id":"test-session","cwd":"'$PWD'","prompt":"hello"}'
+```
+
+### Debug Source Detection
+
+```bash
+# 查看来源检测日志
+tail -f /tmp/beacon_source_debug.log
 ```

@@ -88,6 +88,14 @@ generate_icon_icns() {
   iconset_dir="${iconset_dir}.iconset"
   mkdir -p "$iconset_dir"
 
+  # First, ensure source is a PNG with proper handling
+  local temp_png
+  temp_png="$(mktemp -d)/source.png"
+
+  # Use sips to ensure proper PNG format
+  sips -s format png "$source_png" --out "$temp_png" >/dev/null 2>&1
+
+  # Generate all required sizes
   local sizes=(16 32 64 128 256 512 1024)
   for size in "${sizes[@]}"; do
     local out_file
@@ -101,15 +109,19 @@ generate_icon_icns() {
       1024) out_file="$iconset_dir/icon_512x512@2x.png" ;;
       *) continue ;;
     esac
-    sips -s format png -z "$size" "$size" "$source_png" --out "$out_file" >/dev/null
+    sips -s format png -z "$size" "$size" "$temp_png" --out "$out_file" >/dev/null 2>&1
   done
 
-  cp "$iconset_dir/icon_16x16@2x.png" "$iconset_dir/icon_32x32.png"
-  cp "$iconset_dir/icon_128x128@2x.png" "$iconset_dir/icon_256x256.png"
-  cp "$iconset_dir/icon_256x256@2x.png" "$iconset_dir/icon_512x512.png"
+  # Copy 32, 256, 512 versions
+  cp "$iconset_dir/icon_16x16@2x.png" "$iconset_dir/icon_32x32.png" 2>/dev/null || true
+  cp "$iconset_dir/icon_128x128@2x.png" "$iconset_dir/icon_256x256.png" 2>/dev/null || true
+  cp "$iconset_dir/icon_256x256@2x.png" "$iconset_dir/icon_512x512.png" 2>/dev/null || true
 
+  # Generate icns
   iconutil -c icns "$iconset_dir" -o "$target_icns"
-  rm -rf "$iconset_dir"
+
+  # Clean up
+  rm -rf "$iconset_dir" "$temp_png"
 }
 
 kill_existing_instances
@@ -139,6 +151,8 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
 if [ -f "$APP_ICON_SOURCE" ]; then
   generate_icon_icns "$APP_ICON_SOURCE" "$APP_ICON_ICNS"
+  # Also copy PNG for notification attachments
+  cp "$APP_ICON_SOURCE" "$APP_BUNDLE/Contents/Resources/BeaconIcon.png"
 else
   echo "Warning: app icon source not found, packaging without custom icon: $APP_ICON_SOURCE" >&2
 fi
@@ -178,6 +192,9 @@ PLIST
 
 cp "$BINARY_PATH" "$APP_BUNDLE/Contents/MacOS/$EXECUTABLE_NAME"
 chmod +x "$APP_BUNDLE/Contents/MacOS/$EXECUTABLE_NAME"
+
+# Ad-hoc sign the bundle so macOS grants UNUserNotificationCenter access
+codesign --force --deep -s - "$APP_BUNDLE"
 
 if [ "$SHOULD_OPEN" -eq 1 ]; then
   kill_existing_instances

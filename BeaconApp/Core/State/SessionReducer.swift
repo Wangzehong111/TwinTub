@@ -5,6 +5,7 @@ public struct SessionReducer {
         public enum Kind: Equatable, Sendable {
             case waiting(escalated: Bool)
             case completed
+            case terminated(reason: SessionTerminationReason)
         }
 
         public let kind: Kind
@@ -37,7 +38,8 @@ public struct SessionReducer {
             model.terminationReason = .sessionEndEvent
             model.cleanupDeadline = now.addingTimeInterval(terminatedHistoryRetention)
             model.offlineMarkedAt = nil
-            return .upsert(model, nil)
+            let decision = NotificationDecision(kind: .terminated(reason: .sessionEndEvent), session: model)
+            return .upsert(model, decision)
         }
 
         var model = current ?? SessionModel(
@@ -124,7 +126,13 @@ public struct SessionReducer {
             model.completedAt = nil
             if let usageBytes = event.usageBytes, usageBytes >= 0 {
                 model.usageBytes = usageBytes
-                model.usageSegments = SessionModel.segments(for: usageBytes)
+                // 使用动态 maxContextBytes，如果未提供则使用 model 中存储的值
+                let maxBytes = event.maxContextBytes ?? model.maxContextBytes
+                model.usageSegments = SessionModel.segments(for: usageBytes, maxContextBytes: maxBytes)
+            }
+            // 更新 maxContextBytes（如果 Hook 提供了新值）
+            if let maxContextBytes = event.maxContextBytes {
+                model.maxContextBytes = maxContextBytes
             }
             return .upsert(model, nil)
 
@@ -183,7 +191,14 @@ public struct SessionReducer {
 
     private static func shouldEnterWaiting(from notificationType: String?) -> Bool {
         guard let notificationType else { return false }
-        return notificationType == "permission_prompt" || notificationType == "idle_prompt"
+        let normalized = notificationType
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "-", with: "_")
+
+        return normalized == "permission_prompt" ||
+            normalized == "permission_request" ||
+            normalized == "idle_prompt"
     }
 
     private static func inferredProjectName(from event: BeaconEvent) -> String {
