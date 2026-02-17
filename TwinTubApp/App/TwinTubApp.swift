@@ -22,14 +22,12 @@ struct TwinTubMenuBarApp: App {
 
         // Set up notification click handler to jump to terminal session (after store is created)
         notification.onNotificationClick = { [store, jump] sessionID in
-            // Prevent App from activating when notification is clicked
-            DispatchQueue.main.async {
-                if let session = store.sessions.first(where: { $0.id == sessionID }) {
-                    let outcome = jump.jump(to: session)
-                    NSLog("[TwinTub] Notification click jump outcome: \(outcome)")
-                } else {
-                    NSLog("[TwinTub] Notification clicked but session not found: \(sessionID)")
-                }
+            // This is called on main thread from NotificationCenterDelegate
+            if let session = store.sessions.first(where: { $0.id == sessionID }) {
+                let outcome = jump.jump(to: session)
+                NSLog("[TwinTub] Notification click jump outcome: \(outcome)")
+            } else {
+                NSLog("[TwinTub] Notification clicked but session not found: \(sessionID)")
             }
         }
 

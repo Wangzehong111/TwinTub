@@ -42,28 +42,22 @@ final class NotificationCenterDelegate: NSObject, @unchecked Sendable, UNUserNot
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        // Synchronously set activationPolicy to prevent Dock icon from appearing
-        // This must be done synchronously because the app activation happens immediately
-        if Thread.isMainThread {
-            NSApp.setActivationPolicy(.accessory)
-            NSApp.deactivate()
-        } else {
-            DispatchQueue.main.sync {
-                NSApp.setActivationPolicy(.accessory)
-                NSApp.deactivate()
-            }
-        }
-
+        NSLog("[TwinTub] Notification clicked, processing response...")
         let userInfo = response.notification.request.content.userInfo
+        NSLog("[TwinTub] Notification userInfo: \(userInfo)")
         if let sessionID = userInfo["session_id"] as? String {
-            NSLog("[TwinTub] Notification clicked for session: \(sessionID)")
+            NSLog("[TwinTub] Found session_id: \(sessionID), calling click handler")
+            // Call the click handler first before deactivating
             onNotificationClick?(sessionID)
+        } else {
+            NSLog("[TwinTub] No session_id found in userInfo")
         }
         completionHandler()
 
-        // Double-check to ensure Dock icon doesn't appear
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        // Set activationPolicy to accessory after the jump to prevent Dock icon from appearing
+        DispatchQueue.main.async {
             NSApp.setActivationPolicy(.accessory)
+            NSApp.deactivate()
         }
     }
 
@@ -72,6 +66,7 @@ final class NotificationCenterDelegate: NSObject, @unchecked Sendable, UNUserNot
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        NSLog("[TwinTub] willPresent notification called")
         completionHandler([.banner, .sound, .list])
     }
 }
@@ -105,26 +100,21 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
                 guard let self else { return }
                 self.cachedAuthorizationStatus = settings.authorizationStatus
                 self.cacheTimestamp = Date()
+                NSLog("[TwinTub] Initial notification auth status: \(settings.authorizationStatus.rawValue) (\(settings.authorizationStatus.name))")
                 guard settings.authorizationStatus == .notDetermined else { return }
                 self.center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, _ in
                     guard let self else { return }
                     // Update cache after request
                     self.cachedAuthorizationStatus = granted ? .authorized : .denied
                     self.cacheTimestamp = Date()
+                    NSLog("[TwinTub] Authorization request result: \(granted ? "granted" : "denied")")
                 }
             }
         }
     }
 
     func send(title: String, body: String, sound: String, sessionID: String?) {
-        // Check if we can use cached authorization status
-        if let cached = cachedAuthorizationStatus, let timestamp = cacheTimestamp,
-           Date().timeIntervalSince(timestamp) < cacheValidityDuration {
-            sendWithAuthorizationStatus(cached, title: title, body: body, sound: sound, sessionID: sessionID)
-            return
-        }
-
-        // Cache expired or not set, fetch fresh status
+        // Always fetch fresh status to ensure we use the correct path
         center.getNotificationSettings { [weak self] settings in
             guard let self else { return }
             let status = settings.authorizationStatus
@@ -163,14 +153,23 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
     }
 
     private func postViaUserNotifications(title: String, body: String, sound: String, sessionID: String?) {
+        NSLog("[TwinTub] postViaUserNotifications called with sessionID: \(sessionID ?? "nil")")
         // Temporarily switch to .regular to ensure notification shows correct app icon
         // because LSUIElement = true apps may not display correct notification icon
-        let shouldRestorePolicy = DispatchQueue.main.sync { () -> Bool in
-            if NSApp.activationPolicy() == .accessory {
+        let shouldRestorePolicy: Bool
+        if Thread.isMainThread {
+            shouldRestorePolicy = NSApp.activationPolicy() == .accessory
+            if shouldRestorePolicy {
                 NSApp.setActivationPolicy(.regular)
-                return true
             }
-            return false
+        } else {
+            shouldRestorePolicy = DispatchQueue.main.sync { () -> Bool in
+                if NSApp.activationPolicy() == .accessory {
+                    NSApp.setActivationPolicy(.regular)
+                    return true
+                }
+                return false
+            }
         }
 
         let content = UNMutableNotificationContent()
@@ -182,6 +181,7 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
         // Store session ID in userInfo for click handling
         if let sessionID {
             content.userInfo = ["session_id": sessionID]
+            NSLog("[TwinTub] Set userInfo session_id: \(sessionID)")
         }
 
         let request = UNNotificationRequest(
@@ -190,6 +190,7 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
             trigger: nil
         )
 
+        NSLog("[TwinTub] Adding notification request to center")
         center.add(request) { [weak self, shouldRestorePolicy] error in
             // Restore to .accessory after notification is sent
             if shouldRestorePolicy {
@@ -198,9 +199,12 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
                 }
             }
 
-            guard let self, let error else { return }
-            NSLog("[TwinTub] UNUserNotificationCenter failed: \(error), falling back to AppleScript")
-            self.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
+            if let error {
+                NSLog("[TwinTub] UNUserNotificationCenter failed: \(error), falling back to AppleScript")
+                self?.fallback.send(title: title, body: body, sound: sound, sessionID: sessionID)
+            } else {
+                NSLog("[TwinTub] Notification posted successfully via UNUserNotificationCenter")
+            }
         }
     }
 }
@@ -279,8 +283,11 @@ public final class NotificationService: NotificationDispatching {
         self.notificationCenterDelegate = delegate
 
         // Set up the delegate for notification click handling
+        // IMPORTANT: delegate must be set BEFORE any notification operations
         let center = UNUserNotificationCenter.current()
+        NSLog("[TwinTub] Setting UNUserNotificationCenter delegate")
         center.delegate = delegate
+        NSLog("[TwinTub] Delegate set: \(center.delegate != nil ? "success" : "failed")")
 
         self.sender = UserNotificationCenterSender(center: center, fallback: appleScriptFallback)
     }
