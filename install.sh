@@ -79,12 +79,12 @@ fi
 # Install
 echo -e "${YELLOW}🚀 Installing to $INSTALL_DIR...${NC}"
 
-# Use sudo if needed for /Applications
+# Use cp -R instead of mv to avoid filesystem issues
 if [ -w "$INSTALL_DIR" ]; then
-    mv "$TMP_DIR/$APP_NAME.app" "$INSTALL_DIR/"
+    cp -R "$TMP_DIR/$APP_NAME.app" "$INSTALL_DIR/"
 else
     echo -e "${YELLOW}   Administrator password required...${NC}"
-    sudo mv "$TMP_DIR/$APP_NAME.app" "$INSTALL_DIR/"
+    sudo cp -R "$TMP_DIR/$APP_NAME.app" "$INSTALL_DIR/"
 fi
 
 # Verify installation
