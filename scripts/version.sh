@@ -15,9 +15,17 @@ get_version() {
         return
     fi
 
-    # Try to get the latest tag
-    local tag
-    tag=$(git describe --tags --abbrev=0 2>/dev/null || true)
+    # Try to get the latest annotated tag first, then any tag
+    # Using --tags to include lightweight tags, --abbrev=0 for clean version
+    local tag=""
+
+    # First try annotated tags only (preferred)
+    tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+
+    # Fallback to any tag if no annotated tag found
+    if [ -z "$tag" ]; then
+        tag=$(git tag --list 'v*' --sort=-v:refname 2>/dev/null | head -1 || true)
+    fi
 
     if [ -n "$tag" ]; then
         # Remove 'v' prefix if present

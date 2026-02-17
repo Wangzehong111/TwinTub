@@ -24,9 +24,10 @@ public enum TwinTubConfig {
     public static let defaultServerPort: UInt16 = 55771
 
     /// Actual server port to use (supports TWINTUB_PORT environment variable override)
-    public static var serverPort: UInt16 {
+    /// Cached on first access for thread safety and performance.
+    public static let serverPort: UInt16 = {
         ProcessInfo.processInfo.environment["TWINTUB_PORT"].flatMap { UInt16($0) } ?? defaultServerPort
-    }
+    }()
 
     /// Timeout for hook bridge HTTP requests (seconds)
     public static let hookBridgeTimeout: TimeInterval = 0.2

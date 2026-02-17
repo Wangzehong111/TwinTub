@@ -1,3 +1,13 @@
+# TwinTub Homebrew Formula
+#
+# RELEASE CHECKLIST:
+# 1. Update `version` to match the new release version
+# 2. Update `sha256` with the actual checksum from the release
+# 3. Replace `YOUR_USERNAME` with the actual GitHub username/org
+#
+# To get SHA256 for a release:
+#   curl -sL https://github.com/YOUR_USERNAME/TwinTub/releases/download/v1.0.0/TwinTub-1.0.0.zip | shasum -a 256
+
 class Twintub < Formula
   desc "macOS Menu Bar app for monitoring Claude Code CLI multi-session status"
   homepage "https://github.com/YOUR_USERNAME/TwinTub"
@@ -9,7 +19,7 @@ class Twintub < Formula
 
   on_macos do
     url "https://github.com/YOUR_USERNAME/TwinTub/releases/download/v#{version}/TwinTub-#{version}.zip"
-    # SHA256 should be updated for each release
+    # UPDATE THIS SHA256 BEFORE RELEASE!
     sha256 "0000000000000000000000000000000000000000000000000000000000000000"
   end
 
