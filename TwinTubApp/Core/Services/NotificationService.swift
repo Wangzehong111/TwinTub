@@ -44,9 +44,8 @@ final class NotificationCenterDelegate: NSObject, @unchecked Sendable, UNUserNot
     ) {
         NSLog("[TwinTub] Notification clicked, processing response...")
         let userInfo = response.notification.request.content.userInfo
-        NSLog("[TwinTub] Notification userInfo: \(userInfo)")
         if let sessionID = userInfo["session_id"] as? String {
-            NSLog("[TwinTub] Found session_id: \(sessionID), calling click handler")
+            NSLog("[TwinTub] Found session ID in notification, calling click handler")
             // Call the click handler first before deactivating
             onNotificationClick?(sessionID)
         } else {
@@ -153,7 +152,7 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
     }
 
     private func postViaUserNotifications(title: String, body: String, sound: String, sessionID: String?) {
-        NSLog("[TwinTub] postViaUserNotifications called with sessionID: \(sessionID ?? "nil")")
+        NSLog("[TwinTub] postViaUserNotifications called")
         // Temporarily switch to .regular to ensure notification shows correct app icon
         // because LSUIElement = true apps may not display correct notification icon
         let shouldRestorePolicy: Bool
@@ -181,7 +180,6 @@ final class UserNotificationCenterSender: @unchecked Sendable, NotificationSendi
         // Store session ID in userInfo for click handling
         if let sessionID {
             content.userInfo = ["session_id": sessionID]
-            NSLog("[TwinTub] Set userInfo session_id: \(sessionID)")
         }
 
         let request = UNNotificationRequest(
@@ -234,20 +232,24 @@ final class InProcessAppleScriptSender: NotificationSending {
     }
 
     private func runInProcess(source: String) -> Bool {
-        var succeeded = false
-        var error: NSDictionary?
-
         if Thread.isMainThread {
+            var error: NSDictionary?
             _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
-            succeeded = (error == nil)
-        } else {
-            DispatchQueue.main.sync {
-                _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
-                succeeded = (error == nil)
+            if let error {
+                NSLog("[TwinTub] AppleScript execution failed: \(error)")
             }
+            return error == nil
+        } else {
+            let result = DispatchQueue.main.sync { () -> Bool in
+                var error: NSDictionary?
+                _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
+                if let error {
+                    NSLog("[TwinTub] AppleScript execution failed: \(error)")
+                }
+                return error == nil
+            }
+            return result
         }
-
-        return succeeded
     }
 
     private func runFallbackViaOSAScript(source: String) {

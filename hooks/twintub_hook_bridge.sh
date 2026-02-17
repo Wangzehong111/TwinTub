@@ -451,16 +451,16 @@ if [ -z "$USAGE_TOKENS" ] && [ -n "$TRANSCRIPT_PATH" ]; then
   extract_usage_from_transcript "$TRANSCRIPT_PATH" || true
 fi
 
-# Debug log (temporary)
+# Debug log (temporary) - sanitized to avoid logging sensitive session details
 {
-  printf '%s src=%s bundle=%s conf=%s shellPID=%s shellPPID=%s tty=%s TERM_PROGRAM=%s sid=%s\n' \
+  printf '%s src=%s bundle=%s conf=%s\n' \
     "$(date +%H:%M:%S)" "${SOURCE_APP:-nil}" "${SOURCE_BUNDLE_ID:-nil}" \
-    "${SOURCE_CONFIDENCE:-nil}" "${SHELL_PID:-nil}" "${SHELL_PPID:-nil}" \
-    "${TERMINAL_TTY:-nil}" "${TERM_PROGRAM:-unset}" "${SESSION_ID:-nil}"
+    "${SOURCE_CONFIDENCE:-nil}"
 } >> /tmp/twintub_source_debug.log 2>/dev/null || true
 
 json_escape() {
-  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+  # Escape backslash, double quotes, and control characters for JSON strings
+  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/	/\\t/g' | tr -d '\r\n' | head -c 4096
 }
 
 payload='{"event":"'"$(json_escape "$EVENT")"'","session_id":"'"$(json_escape "$SESSION_ID")"'"'

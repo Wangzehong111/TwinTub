@@ -25,9 +25,9 @@ struct TwinTubMenuBarApp: App {
             // This is called on main thread from NotificationCenterDelegate
             if let session = store.sessions.first(where: { $0.id == sessionID }) {
                 let outcome = jump.jump(to: session)
-                NSLog("[TwinTub] Notification click jump outcome: \(outcome)")
+                NSLog("[TwinTub] Notification click jump completed")
             } else {
-                NSLog("[TwinTub] Notification clicked but session not found: \(sessionID)")
+                NSLog("[TwinTub] Notification clicked but session not found")
             }
         }
 
@@ -41,7 +41,7 @@ struct TwinTubMenuBarApp: App {
             }, debugHandler: { [store] in
                 var lines: [String] = []
                 for s in store.sessions {
-                    lines.append("id=\(s.id) src=\(s.sourceApp ?? "nil") bundle=\(s.sourceBundleID ?? "nil") shellPID=\(s.shellPID ?? 0) tty=\(s.terminalTTY ?? "nil") proj=\(s.projectName)")
+                    lines.append("status=\(s.status.rawValue) proj=\(s.projectName)")
                 }
                 return lines.joined(separator: "\n")
             })
@@ -49,7 +49,13 @@ struct TwinTubMenuBarApp: App {
             server.start()
         } catch {
             self.server = nil
+            // Log error prominently - server is critical for hook communication
+            NSLog("[TwinTub] CRITICAL: LocalEventServer failed to start on port \(TwinTubConfig.serverPort): \(error)")
+            NSLog("[TwinTub] The app will continue running but will not receive hook events from Claude Code CLI")
+            // In debug builds, still trigger assertion for immediate visibility
+            #if DEBUG
             assertionFailure("TwinTub server failed to start on \(TwinTubConfig.serverPort): \(error)")
+            #endif
         }
     }
 
@@ -134,9 +140,9 @@ private final class EventBridge: @unchecked Sendable {
             }
         }
 
-        Task { @MainActor [store] in
+        Task { @MainActor [weak self, store] in
             store.handle(events: compacted)
-            self.queue.async { [weak self] in
+            self?.queue.async { [weak self] in
                 guard let self else { return }
                 self.deliveryInFlight = false
                 if !self.pendingOrder.isEmpty {

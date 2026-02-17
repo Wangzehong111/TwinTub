@@ -17,7 +17,7 @@ struct TwinTubPanelView: View {
                 emptyView
             } else {
                 ScrollView {
-                    VStack(spacing: 12) {
+                    LazyVStack(spacing: 12) {
                         ForEach(store.sessions) { session in
                             SessionCardView(
                                 session: session,

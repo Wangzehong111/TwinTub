@@ -20,10 +20,37 @@ public protocol ProcessSnapshotProviding {
     func snapshot() -> ProcessSnapshot?
 }
 
-public final class ProcessSnapshotProvider: ProcessSnapshotProviding {
-    public init() {}
+public final class ProcessSnapshotProvider: ProcessSnapshotProviding, @unchecked Sendable {
+    private var cachedSnapshot: ProcessSnapshot?
+    private var cacheTimestamp: Date?
+    private let cacheValidityDuration: TimeInterval
+    private let cacheLock = NSLock()
+
+    public init(cacheValidityDuration: TimeInterval = 2.0) {
+        self.cacheValidityDuration = cacheValidityDuration
+    }
 
     public func snapshot() -> ProcessSnapshot? {
+        // Check cache first
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+
+        if let cached = cachedSnapshot,
+           let timestamp = cacheTimestamp,
+           Date().timeIntervalSince(timestamp) < cacheValidityDuration {
+            return cached
+        }
+
+        // Cache miss or expired - fetch new snapshot
+        let newSnapshot = fetchFreshSnapshot()
+        if let newSnapshot {
+            cachedSnapshot = newSnapshot
+            cacheTimestamp = Date()
+        }
+        return newSnapshot
+    }
+
+    private func fetchFreshSnapshot() -> ProcessSnapshot? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/ps")
         process.arguments = ["-axo", "pid=,ppid=,tty="]
@@ -36,16 +63,19 @@ public final class ProcessSnapshotProvider: ProcessSnapshotProviding {
             try process.run()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else {
+                NSLog("[TwinTub] ps command failed with status: \(process.terminationStatus)")
                 return nil
             }
 
             let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
             guard let text = String(data: data, encoding: .utf8) else {
+                NSLog("[TwinTub] Failed to decode ps output as UTF-8")
                 return nil
             }
 
             return parseSnapshot(text)
         } catch {
+            NSLog("[TwinTub] Failed to run ps command: \(error)")
             return nil
         }
     }

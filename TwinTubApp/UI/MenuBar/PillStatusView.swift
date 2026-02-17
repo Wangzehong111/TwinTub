@@ -99,16 +99,26 @@ private enum MenuBarIconRenderer {
     private static let designSize: CGFloat = 24
     private static let scale: CGFloat = iconSize / designSize
 
-    // MARK: - Icon Cache (thread-safe via lock)
+    // MARK: - Icon Cache (thread-safe via actor)
+    private enum CacheKey: String, CaseIterable {
+        case idleDark, idleLight
+        case waitingDark, waitingLight
+        case doneDark, doneLight
+        case processingDark, processingLight
+    }
+
     private static let cacheLock = NSLock()
-    private nonisolated(unsafe) static var _cachedIdleDark: NSImage?
-    private nonisolated(unsafe) static var _cachedIdleLight: NSImage?
-    private nonisolated(unsafe) static var _cachedWaitingDark: NSImage?
-    private nonisolated(unsafe) static var _cachedWaitingLight: NSImage?
-    private nonisolated(unsafe) static var _cachedDoneDark: NSImage?
-    private nonisolated(unsafe) static var _cachedDoneLight: NSImage?
-    private nonisolated(unsafe) static var _cachedProcessingDark: NSImage?
-    private nonisolated(unsafe) static var _cachedProcessingLight: NSImage?
+    private nonisolated(unsafe) static var imageCache: [CacheKey: NSImage] = [:]
+
+    private static func getCached(_ key: CacheKey) -> NSImage? {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        return imageCache[key]
+    }
+
+    private static func setCached(_ key: CacheKey, image: NSImage) {
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        imageCache[key] = image
+    }
 
     static func render(
         status: SessionStore.GlobalStatus,
@@ -122,108 +132,32 @@ private enum MenuBarIconRenderer {
             return renderProcessingWithRotation(rotationAngle: rotationAngle, colorScheme: colorScheme)
         }
 
-        // Check cache for static images
+        // Determine cache key and render function
+        let cacheKey: CacheKey
+        let renderFn: (ColorScheme) -> NSImage
+
         switch status {
         case .idle:
-            if isDark {
-                if let cached = getCachedIdleDark() { return cached }
-                let image = renderIdleImage(colorScheme: colorScheme)
-                setCachedIdleDark(image)
-                return image
-            } else {
-                if let cached = getCachedIdleLight() { return cached }
-                let image = renderIdleImage(colorScheme: colorScheme)
-                setCachedIdleLight(image)
-                return image
-            }
+            cacheKey = isDark ? .idleDark : .idleLight
+            renderFn = renderIdleImage
         case .waiting:
-            if isDark {
-                if let cached = getCachedWaitingDark() { return cached }
-                let image = renderWaitingImage(colorScheme: colorScheme)
-                setCachedWaitingDark(image)
-                return image
-            } else {
-                if let cached = getCachedWaitingLight() { return cached }
-                let image = renderWaitingImage(colorScheme: colorScheme)
-                setCachedWaitingLight(image)
-                return image
-            }
+            cacheKey = isDark ? .waitingDark : .waitingLight
+            renderFn = renderWaitingImage
         case .done:
-            if isDark {
-                if let cached = getCachedDoneDark() { return cached }
-                let image = renderDoneImage(colorScheme: colorScheme)
-                setCachedDoneDark(image)
-                return image
-            } else {
-                if let cached = getCachedDoneLight() { return cached }
-                let image = renderDoneImage(colorScheme: colorScheme)
-                setCachedDoneLight(image)
-                return image
-            }
+            cacheKey = isDark ? .doneDark : .doneLight
+            renderFn = renderDoneImage
         case .processing:
-            // Processing without rotation (initial state)
-            if isDark {
-                if let cached = getCachedProcessingDark() { return cached }
-                let image = renderProcessingImage(colorScheme: colorScheme, rotationAngle: 0)
-                setCachedProcessingDark(image)
-                return image
-            } else {
-                if let cached = getCachedProcessingLight() { return cached }
-                let image = renderProcessingImage(colorScheme: colorScheme, rotationAngle: 0)
-                setCachedProcessingLight(image)
-                return image
-            }
+            cacheKey = isDark ? .processingDark : .processingLight
+            renderFn = { renderProcessingImage(colorScheme: $0, rotationAngle: 0) }
         }
-    }
 
-    // MARK: - Cache Accessors
-    private static func getCachedIdleDark() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedIdleDark
-    }
-    private static func setCachedIdleDark(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedIdleDark = image
-    }
-    private static func getCachedIdleLight() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedIdleLight
-    }
-    private static func setCachedIdleLight(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedIdleLight = image
-    }
-    private static func getCachedWaitingDark() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedWaitingDark
-    }
-    private static func setCachedWaitingDark(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedWaitingDark = image
-    }
-    private static func getCachedWaitingLight() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedWaitingLight
-    }
-    private static func setCachedWaitingLight(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedWaitingLight = image
-    }
-    private static func getCachedDoneDark() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedDoneDark
-    }
-    private static func setCachedDoneDark(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedDoneDark = image
-    }
-    private static func getCachedDoneLight() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedDoneLight
-    }
-    private static func setCachedDoneLight(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedDoneLight = image
-    }
-    private static func getCachedProcessingDark() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedProcessingDark
-    }
-    private static func setCachedProcessingDark(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedProcessingDark = image
-    }
-    private static func getCachedProcessingLight() -> NSImage? {
-        cacheLock.lock(); defer { cacheLock.unlock() }; return _cachedProcessingLight
-    }
-    private static func setCachedProcessingLight(_ image: NSImage) {
-        cacheLock.lock(); defer { cacheLock.unlock() }; _cachedProcessingLight = image
+        // Check cache
+        if let cached = getCached(cacheKey) { return cached }
+
+        // Render and cache
+        let image = renderFn(colorScheme)
+        setCached(cacheKey, image: image)
+        return image
     }
 
     private static func renderIdleImage(colorScheme: ColorScheme) -> NSImage {
@@ -270,14 +204,7 @@ private enum MenuBarIconRenderer {
     static func clearCache() {
         cacheLock.lock()
         defer { cacheLock.unlock() }
-        _cachedIdleDark = nil
-        _cachedIdleLight = nil
-        _cachedWaitingDark = nil
-        _cachedWaitingLight = nil
-        _cachedDoneDark = nil
-        _cachedDoneLight = nil
-        _cachedProcessingDark = nil
-        _cachedProcessingLight = nil
+        imageCache.removeAll(keepingCapacity: true)
     }
 
     private static func strokeColor(for status: SessionStore.GlobalStatus, colorScheme: ColorScheme) -> NSColor {

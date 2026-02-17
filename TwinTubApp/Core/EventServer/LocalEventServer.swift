@@ -5,8 +5,8 @@ public final class LocalEventServer: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "twintub.event.server")
     private let eventHandler: @Sendable (TwinTubEvent) -> Void
-
     private let debugHandler: (@Sendable () -> String)?
+    private let debugToken: String
 
     public init(port: UInt16 = TwinTubConfig.defaultServerPort, eventHandler: @escaping @Sendable (TwinTubEvent) -> Void, debugHandler: (@Sendable () -> String)? = nil) throws {
         guard         let nwPort = NWEndpoint.Port(rawValue: port) else {
@@ -15,6 +15,9 @@ public final class LocalEventServer: @unchecked Sendable {
         self.listener = try NWListener(using: .tcp, on: nwPort)
         self.eventHandler = eventHandler
         self.debugHandler = debugHandler
+        // Generate a random debug token on each startup for /debug endpoint access
+        self.debugToken = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        NSLog("[TwinTub] Debug token: \(debugToken)")
     }
 
     public func start() {
@@ -94,8 +97,17 @@ public final class LocalEventServer: @unchecked Sendable {
         }
 
         if requestLine.contains("GET /debug") {
-            let info = debugHandler?() ?? "no debug handler"
-            return httpResponse(status: 200, body: info)
+            // Require debug token for access: GET /debug?token=xxx
+            let tokenPattern = "token=([a-f0-9]+)"
+            if let tokenRange = requestLine.range(of: tokenPattern, options: .regularExpression) {
+                let tokenStartIndex = requestLine.index(tokenRange.lowerBound, offsetBy: 6)
+                let providedToken = String(requestLine[tokenStartIndex..<tokenRange.upperBound])
+                if providedToken == debugToken {
+                    let info = debugHandler?() ?? "no debug handler"
+                    return httpResponse(status: 200, body: info)
+                }
+            }
+            return httpResponse(status: 403, body: "access denied")
         }
 
         guard requestLine.contains("POST /event") else {
@@ -122,6 +134,7 @@ public final class LocalEventServer: @unchecked Sendable {
         case 200: reason = "OK"
         case 202: reason = "Accepted"
         case 400: reason = "Bad Request"
+        case 403: reason = "Forbidden"
         case 404: reason = "Not Found"
         default: reason = "Unknown"
         }
