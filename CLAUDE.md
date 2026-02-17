@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Beacon** 是一个 macOS Menu Bar 应用程序，用于监控 Claude Code CLI 的多会话状态。产品遵循 "Native & Retro" 设计哲学，提供沉浸式的终端美学体验。
+**TwinTub** 是一个 macOS Menu Bar 应用程序，用于监控 Claude Code CLI 的多会话状态。产品遵循 "Native & Retro" 设计哲学，提供沉浸式的终端美学体验。
 
 ## Architecture
 
@@ -24,14 +24,14 @@ Automate with hooks: https://code.claude.com/docs/en/hooks-guide
 
 ### Components
 
-1. **Hook Bridge** (`hooks/beacon_hook_bridge.sh`): Bash 脚本监听 Claude Code 生命周期事件，通过 HTTP POST 发送给 App
+1. **Hook Bridge** (`hooks/twintub_hook_bridge.sh`): Bash 脚本监听 Claude Code 生命周期事件，通过 HTTP POST 发送给 App
 2. **LocalEventServer**: 使用 Network.framework 的 TCP 服务器，监听端口 55771，接收 `/event` 和 `/health` 端点
 3. **SwiftUI Menu Bar App**: 接收事件并更新 UI，支持状态显示、会话列表、跳转功能
 
 ### Code Architecture (Redux-like Pattern)
 
 ```
-BeaconEvent ──▶ EventBridge ──▶ SessionStore ──▶ SwiftUI Views
+TwinTubEvent ──▶ EventBridge ──▶ SessionStore ──▶ SwiftUI Views
                     │                │
                     │                ├─▶ SessionReducer (pure)
                     │                ├─▶ SessionLivenessMonitor
@@ -41,16 +41,16 @@ BeaconEvent ──▶ EventBridge ──▶ SessionStore ──▶ SwiftUI Views
 ```
 
 核心文件：
-- `BeaconApp/App/BeaconApp.swift`: App 入口，初始化依赖，包含 `EventBridge`（事件合并/flush）
-- `BeaconApp/Core/Model/BeaconEvent.swift`: 事件模型（来自 hooks）
-- `BeaconApp/Core/Model/SessionModel.swift`: 会话状态模型（含 liveness 字段）
-- `BeaconApp/Core/State/SessionReducer.swift`: 纯函数 reducer，处理事件逻辑
-- `BeaconApp/Core/Store/SessionStore.swift`: 状态管理，Combine throttle 500ms，后台 liveness 检查
-- `BeaconApp/Core/EventServer/LocalEventServer.swift`: HTTP 服务器（端口 55771）
-- `BeaconApp/Core/Services/NotificationService.swift`: 系统通知
-- `BeaconApp/Core/Services/TerminalJumpService.swift`: 跳转到终端会话
-- `BeaconApp/Core/Services/SessionLivenessMonitor.swift`: 会话存活监控（进程/TTY 验证）
-- `BeaconApp/Core/Services/ProcessSnapshotProvider.swift`: 系统 ps 快照提供者
+- `TwinTubApp/App/TwinTubApp.swift`: App 入口，初始化依赖，包含 `EventBridge`（事件合并/flush）
+- `TwinTubApp/Core/Model/TwinTubEvent.swift`: 事件模型（来自 hooks）
+- `TwinTubApp/Core/Model/SessionModel.swift`: 会话状态模型（含 liveness 字段）
+- `TwinTubApp/Core/State/SessionReducer.swift`: 纯函数 reducer，处理事件逻辑
+- `TwinTubApp/Core/Store/SessionStore.swift`: 状态管理，Combine throttle 500ms，后台 liveness 检查
+- `TwinTubApp/Core/EventServer/LocalEventServer.swift`: HTTP 服务器（端口 55771）
+- `TwinTubApp/Core/Services/NotificationService.swift`: 系统通知
+- `TwinTubApp/Core/Services/TerminalJumpService.swift`: 跳转到终端会话
+- `TwinTubApp/Core/Services/SessionLivenessMonitor.swift`: 会话存活监控（进程/TTY 验证）
+- `TwinTubApp/Core/Services/ProcessSnapshotProvider.swift`: 系统 ps 快照提供者
 
 ### Session Liveness (Dual-Source Truth)
 
@@ -82,7 +82,7 @@ alive → suspectOffline (首次检测不到) → offline (超过 grace period) 
 
 ### Communication Protocol
 
-- App 监听本地端口 **55771**（可通过 `BEACON_PORT` 环境变量覆盖）
+- App 监听本地端口 **55771**（可通过 `TWINTUB_PORT` 环境变量覆盖）
 - Hook Bridge 使用 `curl` 发送 JSON 数据到 `POST /event`
 - 健康检查：`GET /health`
 - 事件类型映射：
@@ -115,7 +115,7 @@ Hook Bridge 额外字段：
 
 ## UI/UX Specification
 
-请严格参考 `beacon.pen` 设计稿，包含：
+请严格参考 `twintub.pen` 设计稿，包含：
 
 - **Dark Theme**: 背景 #1A1A1A，强调色琥珀橙 #FF9F0A / 终端绿 #32D74B
 - **Light Theme**: 背景 #F7F3E0，强调色国际橙 #FF453A / 墨绿 #004D40
@@ -137,19 +137,19 @@ Hook Bridge 额外字段：
 ### Build & Run (Recommended)
 
 ```bash
-./scripts/run_beacon_app.sh
+./scripts/run_twintub_app.sh
 ```
 
-构建并打包为 `.build/Beacon.app`，然后启动（需要 mainBundle 路径）。
+构建并打包为 `.build/TwinTub.app`，然后启动（需要 mainBundle 路径）。
 
 ### Build
 
 ```bash
 # App bundle (推荐)
-./scripts/run_beacon_app.sh --no-run
+./scripts/run_twintub_app.sh --no-run
 
 # xcodebuild
-xcodebuild -scheme Beacon -destination 'platform=macOS' build
+xcodebuild -scheme TwinTub -destination 'platform=macOS' build
 
 # Swift Package
 swift build
@@ -159,7 +159,7 @@ swift build
 
 ```bash
 # All tests
-xcodebuild -scheme Beacon -destination 'platform=macOS' test
+xcodebuild -scheme TwinTub -destination 'platform=macOS' test
 
 # Swift Package
 swift test
@@ -203,5 +203,5 @@ curl -X POST http://127.0.0.1:55771/event \
 
 ```bash
 # 查看来源检测日志
-tail -f /tmp/beacon_source_debug.log
+tail -f /tmp/twintub_source_debug.log
 ```

@@ -2,22 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "Beacon",
+    name: "TwinTub",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "BeaconApp", targets: ["BeaconApp"])
+        .executable(name: "TwinTubApp", targets: ["TwinTubApp"])
     ],
     targets: [
         .executableTarget(
-            name: "BeaconApp",
-            path: "BeaconApp"
+            name: "TwinTubApp",
+            path: "TwinTubApp"
         ),
         .testTarget(
-            name: "BeaconTests",
-            dependencies: ["BeaconApp"],
-            path: "BeaconTests"
+            name: "TwinTubTests",
+            dependencies: ["TwinTubApp"],
+            path: "TwinTubTests"
         )
     ]
 )

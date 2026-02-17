@@ -2,7 +2,7 @@
 set -euo pipefail
 
 HOST="127.0.0.1"
-PORT="${BEACON_PORT:-55771}"
+PORT="${TWINTUB_PORT:-55771}"
 URL="http://${HOST}:${PORT}/event"
 SESSION_ID="demo-session"
 

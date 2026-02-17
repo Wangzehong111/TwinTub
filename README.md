@@ -1,26 +1,26 @@
-# Beacon
+# TwinTub
 
 Menu bar app for Claude Code multi-session monitoring.
 
 ## Run (recommended)
 
 ```bash
-cd /Users/wangzehong/PycharmProjects/Beacon
+cd /Users/wangzehong/PycharmProjects/TwinTub
 ./scripts/run_beacon_app.sh
 ```
 
-This builds `Beacon`, packages it as `dist/Beacon.app`, and launches it so `mainBundle` is valid.
+This builds `TwinTub`, packages it as `dist/TwinTub.app`, and launches it so `mainBundle` is valid.
 
 ## Build
 
 ```bash
-xcodebuild -scheme Beacon -destination 'platform=macOS' build
+xcodebuild -scheme TwinTub -destination 'platform=macOS' build
 ```
 
 ## Test
 
 ```bash
-xcodebuild -scheme Beacon -destination 'platform=macOS' test
+xcodebuild -scheme TwinTub -destination 'platform=macOS' test
 ```
 
 ## Hook install
@@ -37,11 +37,11 @@ xcodebuild -scheme Beacon -destination 'platform=macOS' test
 
 ## Jump behavior
 
-Beacon now follows source terminal per session:
+TwinTub now follows source terminal per session:
 
 1. Hook bridge detects source terminal/IDE and also sends terminal context (`terminal_tty`, `shell_pid`, `terminal_session_id`).
 2. Clicking `Jump` first tries to focus the exact original Terminal/iTerm tab by tty.
-3. If exact match is unavailable, Beacon falls back to opening the source app at `cwd`.
+3. If exact match is unavailable, TwinTub falls back to opening the source app at `cwd`.
 4. If source is unknown or jump fails, a per-card terminal picker is shown.
 
 ### Supported targets (auto-detect + manual fallback)
@@ -57,7 +57,7 @@ Compatibility baseline:
 
 ## Session auto-cleanup
 
-Beacon now uses dual-source session truth:
+TwinTub now uses dual-source session truth:
 
 1. Hook events drive session creation and status updates.
 2. A background liveness monitor reconciles sessions by local process/TTY state every 5 seconds.

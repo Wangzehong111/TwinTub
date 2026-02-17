@@ -2,16 +2,16 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SOURCE_SCRIPT="$ROOT_DIR/hooks/beacon_hook_bridge.sh"
+SOURCE_SCRIPT="$ROOT_DIR/hooks/twintub_hook_bridge.sh"
 TARGET_DIR="$HOME/.claude/hooks"
-TARGET_SCRIPT="$TARGET_DIR/beacon_hook_bridge.sh"
+TARGET_SCRIPT="$TARGET_DIR/twintub_hook_bridge.sh"
 SETTINGS_FILE="$HOME/.claude/settings.json"
 
 mkdir -p "$TARGET_DIR"
 cp "$SOURCE_SCRIPT" "$TARGET_SCRIPT"
 chmod +x "$TARGET_SCRIPT"
 
-echo "Beacon hook bridge installed: $TARGET_SCRIPT"
+echo "TwinTub hook bridge installed: $TARGET_SCRIPT"
 
 echo ""
 echo "If you manage Claude hooks via JSON, add this command for each needed hook event:"
